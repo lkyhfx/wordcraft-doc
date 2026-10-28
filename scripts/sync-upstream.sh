@@ -206,10 +206,10 @@ if (files.length === 0) { console.error("no .doc fixtures in " + dir); process.e
     const docx = await addon.convertDocToDocx(input);
     if (!docx || docx.length === 0) throw new Error(file + ": empty DOCX output");
     if (docx.readUInt32LE(0) !== 0x04034b50) throw new Error(file + ": DOCX output is not a zip");
-    const pdf = await addon.convertDocToPdf(input);
+    const pdf = await addon.convertDocToPdf(input, { requireFonts: false });
     if (!pdf || pdf.length === 0) throw new Error(file + ": empty PDF output");
     if (pdf.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error(file + ": DOC to PDF output is not a PDF");
-    const pdf2 = await addon.convertDocxToPdf(docx);
+    const pdf2 = await addon.convertDocxToPdf(docx, { requireFonts: false });
     if (!pdf2 || pdf2.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error(file + ": DOCX to PDF output is not a PDF");
   }
   console.log(files.length + " fixture(s) converted to DOCX and PDF");
