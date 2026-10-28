@@ -406,6 +406,11 @@ describe('fonts', () => {
     assertPdf(await convertDocxToPdf(buildDocx(['The quick brown fox jumps over the lazy dog.'])), 'latin');
   });
 
+  test('does not require standalone glyphs for Unicode formatting characters', async () => {
+    const docx = buildDocx(['Latin text\u200D\uFE0F']);
+    assertPdf(await convertDocxToPdf(docx), 'Unicode formatting characters');
+  });
+
   test('does not reject documents whose text the system fonts cover', async () => {
     for (const name of DOCUMENTS) assertPdf(await convertFixtureToPdf(name), name);
   });
