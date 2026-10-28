@@ -168,19 +168,19 @@ fi
 # ---------------------------------------------------------------------------
 # 7. Stage the new pointer and summarise.
 # ---------------------------------------------------------------------------
-git add "$SUB"
+git add "$SUB" "$UPSTREAM_MD" native/Cargo.lock
 say "==> done"
 cat <<EOF
 
   upstream:  $OLD_SHA -> $NEW_SHA ($KIND $REF)
   build:     ok
   smoke:     $SMOKE_OUTPUT
-  staged:    $SUB (new submodule pointer)
+  staged:    $SUB, UPSTREAM.md, native/Cargo.lock
 
   Nothing was committed and nothing was published. Next:
 
-    git diff --submodule=log -- $SUB     # review the upstream changes
-    git diff -- UPSTREAM.md
+    git diff --cached --submodule=log -- $SUB     # review the staged upstream changes
+    git diff --cached -- UPSTREAM.md native/Cargo.lock
     git commit -m "chore(upstream): sync WordCraft to $REF"
 
   Then rebuild the release artifacts before publishing:
