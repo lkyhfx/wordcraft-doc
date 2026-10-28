@@ -1,6 +1,6 @@
 {
   "name": "wordcraft-doc-monorepo",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Build and test harness for @lkyhfx/wordcraft-doc (the published package lives in npm/)",
   "license": "MIT OR Apache-2.0",

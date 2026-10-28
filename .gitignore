@@ -9,8 +9,9 @@ target/
 npm/*.node
 npm-dist/
 
-# Converted output from tests/fixtures (*.doc -> *.docx)
+# Converted output from tests/fixtures (*.doc -> *.docx and *.pdf)
 fixtures-docx/
+fixtures-pdf/
 
 # Node
 node_modules/

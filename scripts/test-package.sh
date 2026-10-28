@@ -135,24 +135,56 @@ JS
 
 say "==> converting a document from the installed package"
 node - "$WORK" "$ROOT/tests/fixtures/test.doc" <<'JS'
-const { readFileSync, writeFileSync } = require('node:fs');
+const { readFileSync } = require('node:fs');
 const [work, fixture] = process.argv.slice(2);
 
 (async () => {
-  const { convertDocToDocx, convertDocFileToDocx } = require(`${work}/node_modules/@lkyhfx/wordcraft-doc`);
-  const input = readFileSync(fixture);
-  const output = await convertDocToDocx(input);
-  if (!Buffer.isBuffer(output) || output.length === 0) throw new Error('no Buffer output');
-  if (output.readUInt32LE(0) !== 0x04034b50) throw new Error('output is not a zip');
-  const parsed = require(`${work}/node_modules/@lkyhfx/wordcraft-doc`).__napiBindingTarget;
+  const addon = require(`${work}/node_modules/@lkyhfx/wordcraft-doc`);
+  const { convertDocToDocx, convertDocFileToDocx, convertDocToPdf, convertDocFileToPdf, convertDocxToPdf } = addon;
+  const parsed = addon.__napiBindingTarget;
   const target = parsed === 'native' ? 'native addon' : parsed;
-  console.log('    Buffer API:', output.length, 'bytes via', target);
+
+  const input = readFileSync(fixture);
+  const docx = await convertDocToDocx(input);
+  if (!Buffer.isBuffer(docx) || docx.length === 0) throw new Error('no DOCX Buffer output');
+  if (docx.readUInt32LE(0) !== 0x04034b50) throw new Error('DOCX output is not a zip');
+  console.log('    DOC to DOCX:', docx.length, 'bytes via', target);
 
   const target2 = `${work}/out.docx`;
   await convertDocFileToDocx(fixture, target2);
   const written = readFileSync(target2);
-  if (!written.equals(output)) throw new Error('the file API and the Buffer API disagree');
-  console.log('    file API:  ', written.length, 'bytes, identical to the Buffer API');
+  if (!written.equals(docx)) throw new Error('the file API and the Buffer API disagree');
+  console.log('    DOCX file API:', written.length, 'bytes, identical to the Buffer API');
+
+  // PDF, from both sources, through both APIs.
+  const pdf = await convertDocToPdf(input);
+  if (!Buffer.isBuffer(pdf) || pdf.subarray(0, 5).toString('latin1') !== '%PDF-') {
+    throw new Error('DOC to PDF output is not a PDF');
+  }
+  if (pdf.subarray(-1024).toString('latin1').indexOf('%%EOF') < 0) throw new Error('the PDF is truncated');
+  console.log('    DOC to PDF:  ', pdf.length, 'bytes');
+
+  const pdf2 = await convertDocxToPdf(docx);
+  if (pdf2.subarray(0, 5).toString('latin1') !== '%PDF-') throw new Error('DOCX to PDF output is not a PDF');
+  console.log('    DOCX to PDF: ', pdf2.length, 'bytes');
+
+  // The PDF carries a creation timestamp, so two runs a second apart differ;
+  // every timestamp has a fixed width, so normalizing them keeps the lengths
+  // and makes the comparison exact.
+  const normalize = (bytes) =>
+    Buffer.from(
+      bytes
+        .toString('latin1')
+        .replace(/D:\d{14}Z/g, 'D:00000000000000Z')
+        .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+Z]\d{0,2}:?\d{0,2}/g, '0000-00-00T00:00:00Z'),
+      'latin1',
+    );
+
+  const target3 = `${work}/out.pdf`;
+  await convertDocFileToPdf(fixture, target3);
+  const writtenPdf = readFileSync(target3);
+  if (!normalize(writtenPdf).equals(normalize(pdf))) throw new Error('the PDF file API and the Buffer API disagree');
+  console.log('    PDF file API:', writtenPdf.length, 'bytes, same content as the Buffer API');
 })().catch((error) => {
   console.error('   ', error.code ?? '', error.message);
   process.exit(1);
@@ -163,15 +195,31 @@ say "==> typechecking the published declarations"
 if command -v tsc >/dev/null || [[ -x "$ROOT/.dev/cli/node_modules/.bin/tsc" ]]; then
   TSC="$(command -v tsc || echo "$ROOT/.dev/cli/node_modules/.bin/tsc")"
   cat >"$WORK/consumer.ts" <<'TS'
-import { convertDocToDocx, convertDocFileToDocx } from '@lkyhfx/wordcraft-doc';
+import {
+  convertDocFileToDocx,
+  convertDocFileToPdf,
+  convertDocToDocx,
+  convertDocToPdf,
+  convertDocxFileToPdf,
+  convertDocxToPdf,
+} from '@lkyhfx/wordcraft-doc';
 import type { ConvertOptions } from '@lkyhfx/wordcraft-doc';
 
 async function use(input: Buffer, path: string): Promise<number> {
-  const options: ConvertOptions = { password: 'x', maxInputBytes: 1 << 20, maxOutputBytes: 1 << 20 };
-  const output: Buffer = await convertDocToDocx(input, options);
+  const options: ConvertOptions = {
+    password: 'x',
+    maxInputBytes: 1 << 20,
+    maxOutputBytes: 1 << 20,
+    requireFonts: true,
+  };
+  const docx: Buffer = await convertDocToDocx(input, options);
+  const pdf: Buffer = await convertDocToPdf(input, options);
+  const pdfFromDocx: Buffer = await convertDocxToPdf(docx);
   await convertDocFileToDocx(path, '/tmp/out.docx');
   await convertDocFileToDocx(path, '/tmp/out.docx', { password: 'y' });
-  return output.length;
+  await convertDocFileToPdf(path, '/tmp/out.pdf');
+  await convertDocxFileToPdf(path, '/tmp/out.pdf', { requireFonts: false });
+  return docx.length + pdf.length + pdfFromDocx.length;
 }
 
 void use;

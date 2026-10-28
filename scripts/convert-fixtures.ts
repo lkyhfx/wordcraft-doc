@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Convert every `.doc` in tests/fixtures into fixtures-docx/, so the output can
- * be opened and inspected without rebuilding the addon.
+ * Convert every `.doc` in tests/fixtures into fixtures-docx/ and fixtures-pdf/,
+ * so the output can be opened and inspected without rebuilding the addon.
  *
  *   node scripts/convert-fixtures.ts          # from the built addon in npm/
  *   node scripts/convert-fixtures.ts --installed
@@ -16,25 +16,40 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SOURCE = join(ROOT, 'tests', 'fixtures');
-const TARGET = join(ROOT, 'fixtures-docx');
+const DOCX_DIR = join(ROOT, 'fixtures-docx');
+const PDF_DIR = join(ROOT, 'fixtures-pdf');
 
-type Converter = (input: string, output: string) => Promise<void>;
+type FileConverter = (input: string, output: string) => Promise<void>;
 
-async function loadConverter(installed: boolean): Promise<Converter> {
+interface Converters {
+  docx: FileConverter;
+  pdf: FileConverter;
+}
+
+async function loadConverters(installed: boolean): Promise<Converters> {
   // `--installed` resolves from the current directory, not from this file, so
   // the script can be run inside a project that has installed the package.
   const specifier = installed
     ? createRequire(join(process.cwd(), 'noop.js')).resolve('@lkyhfx/wordcraft-doc')
     : new URL('../npm/index.js', import.meta.url).href;
-  const module = (await import(specifier)) as { convertDocFileToDocx: Converter };
-  return module.convertDocFileToDocx;
+  const module = (await import(specifier)) as {
+    convertDocFileToDocx: FileConverter;
+    convertDocFileToPdf: FileConverter;
+  };
+  return { docx: module.convertDocFileToDocx, pdf: module.convertDocFileToPdf };
+}
+
+/** A DOCX is a zip archive; a PDF starts with its version header. */
+function looksLike(kind: 'docx' | 'pdf', bytes: Buffer): boolean {
+  return kind === 'docx' ? bytes.readUInt32LE(0) === 0x04034b50 : bytes.subarray(0, 5).toString('latin1') === '%PDF-';
 }
 
 async function main(): Promise<void> {
   const installed = process.argv.includes('--installed');
-  const convert = await loadConverter(installed);
+  const converters = await loadConverters(installed);
 
-  await mkdir(TARGET, { recursive: true });
+  await mkdir(DOCX_DIR, { recursive: true });
+  await mkdir(PDF_DIR, { recursive: true });
 
   const entries = await readdir(SOURCE);
   const documents = entries.filter((name) => name.toLowerCase().endsWith('.doc')).sort();
@@ -48,27 +63,33 @@ async function main(): Promise<void> {
 
   for (const name of documents) {
     const input = join(SOURCE, name);
-    const output = join(TARGET, name.replace(/\.doc$/i, '.docx'));
-    try {
-      const started = performance.now();
-      await convert(input, output);
-      const elapsed = Math.round(performance.now() - started);
-      const size = (await stat(output)).size;
-      // Read the result back: a file that exists but cannot be an OOXML package
-      // is not a successful conversion.
-      const bytes = await readFile(output);
-      if (bytes.readUInt32LE(0) !== 0x04034b50) throw new Error('output is not a zip package');
-      console.log(
-        `  ${name.padEnd(width)}  ->  ${String(size).padStart(7)} bytes  ${elapsed} ms`,
-      );
-    } catch (error) {
-      failures += 1;
-      const code = (error as NodeJS.ErrnoException).code ?? 'ERROR';
-      console.error(`  ${name.padEnd(width)}  ->  ${code}: ${(error as Error).message}`);
+    const outputs = [
+      { kind: 'docx' as const, path: join(DOCX_DIR, name.replace(/\.doc$/i, '.docx')), convert: converters.docx },
+      { kind: 'pdf' as const, path: join(PDF_DIR, name.replace(/\.doc$/i, '.pdf')), convert: converters.pdf },
+    ];
+    for (const output of outputs) {
+      try {
+        const started = performance.now();
+        await output.convert(input, output.path);
+        const elapsed = Math.round(performance.now() - started);
+        const size = (await stat(output.path)).size;
+        // Read the result back: a file that exists but cannot be the promised
+        // format is not a successful conversion.
+        const bytes = await readFile(output.path);
+        if (!looksLike(output.kind, bytes)) throw new Error(`output is not a ${output.kind.toUpperCase()}`);
+        console.log(
+          `  ${name.padEnd(width)}  ->  ${output.kind.padEnd(4)}  ${String(size).padStart(7)} bytes  ${elapsed} ms`,
+        );
+      } catch (error) {
+        failures += 1;
+        const code = (error as NodeJS.ErrnoException).code ?? 'ERROR';
+        console.error(`  ${name.padEnd(width)}  ->  ${output.kind.padEnd(4)}  ${code}: ${(error as Error).message}`);
+      }
     }
   }
 
-  console.log(`\n${documents.length - failures}/${documents.length} converted into ${relative(ROOT, TARGET)}/`);
+  const total = documents.length * 2;
+  console.log(`\n${total - failures}/${total} conversions written to ${relative(ROOT, DOCX_DIR)}/ and ${relative(ROOT, PDF_DIR)}/`);
   if (failures > 0) process.exit(1);
 }
 

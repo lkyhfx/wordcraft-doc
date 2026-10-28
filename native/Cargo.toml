@@ -1,21 +1,24 @@
 [package]
 name = "wordcraft-doc-node"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
-description = "Node.js bindings for converting legacy Word .doc files to .docx"
+description = "Node.js bindings for converting Word .doc and .docx files to .docx or PDF"
 publish = false
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-# Only the three core WordCraft crates: the .doc reader, the document model and the .docx
-# writer. Everything else (layout, pdf, render, engine, ui, mcp, cli, zotero) stays out.
+# The format crates and the PDF exporter, and nothing else: no render, engine, ui,
+# mcp, cli or zotero. wordcraft-fonts comes with the PDF exporter and is used here
+# only to report a missing system font before exporting.
 wordcraft-docbin = { path = "../upstream/wordcraft/crates/docbin" }
 wordcraft-doc = { path = "../upstream/wordcraft/crates/doc" }
 wordcraft-docx = { path = "../upstream/wordcraft/crates/docx" }
+wordcraft-pdf = { path = "../upstream/wordcraft/crates/pdf" }
+wordcraft-fonts = { path = "../upstream/wordcraft/crates/fonts" }
 
 # Verifying the produced package needs a real zip reader.
 zip = { version = "3", default-features = false, features = ["deflate"] }
@@ -31,3 +34,10 @@ lto = true
 codegen-units = 1
 strip = "symbols"
 panic = "unwind"
+
+# craft-pdf's PDF backend (krilla) is a git fork: its patches are required by the
+# upstream writer, and a registry version would not compile against it. The
+# patch lives here because native/ is its own workspace root, so upstream's own
+# Cargo.toml is not consulted for it.
+[patch.crates-io]
+krilla = { git = "https://github.com/storytold/craft-libs", rev = "17744430be327d0257496a6a31c8d38fe20a6756" }

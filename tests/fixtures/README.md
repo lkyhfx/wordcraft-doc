@@ -27,9 +27,9 @@ redistributed under a license compatible with this project.
 
 ## Converted output
 
-`../../fixtures-docx/` holds the result of converting every fixture, so the
-output can be inspected without rebuilding. It is git-ignored; regenerate it
-with:
+`../../fixtures-docx/` and `../../fixtures-pdf/` hold the result of converting
+every fixture to DOCX and to PDF, so the output can be inspected without
+rebuilding. They are git-ignored; regenerate both with:
 
 ```bash
 node scripts/convert-fixtures.ts
@@ -42,4 +42,5 @@ in-repository `npm/index.js`.
 
 Prefer documents produced by Microsoft Word. Keep them small. Add the file, add
 a row to the table above, and add the name to the `documents` list in
-`../conversion.test.ts`. A fixture that is not listed there is dead weight.
+`../conversion.test.ts` and the `DOCUMENTS` list in `../pdf.test.ts`. A fixture
+that is not listed in both is dead weight.

@@ -83,25 +83,99 @@ require_fn() { # file, pattern, description
     note "ok  $3"
   fi
 }
+# The `.doc` reader.
 require_fn "crates/docbin/src/lib.rs" 'pub fn read\('               'wordcraft_docbin::read'
 require_fn "crates/docbin/src/lib.rs" 'pub fn read_with_password\(' 'wordcraft_docbin::read_with_password'
 require_fn "crates/docbin/src/lib.rs" 'pub enum DocbinError'       'wordcraft_docbin::DocbinError'
-require_fn "crates/docx/src/lib.rs"   'pub use write::\{write'     'wordcraft_docx::write'
-require_fn "crates/docx/src/lib.rs"   'pub enum DocxError'         'wordcraft_docx::DocxError'
 require_fn "crates/docbin/Cargo.toml" '^name = "wordcraft-docbin"' 'wordcraft-docbin crate name'
-require_fn "crates/docx/Cargo.toml"   '^name = "wordcraft-docx"'   'wordcraft-docx crate name'
+# The document model and the DOCX reader/writer.
+require_fn "crates/doc/src/lib.rs"    'pub struct Document'        'wordcraft_doc::Document'
 require_fn "crates/doc/Cargo.toml"    '^name = "wordcraft-doc"'    'wordcraft-doc crate name'
+require_fn "crates/docx/src/lib.rs"   'pub use write::\{write'     'wordcraft_docx::write'
+require_fn "crates/docx/src/lib.rs"   'pub fn read_with_password\(' 'wordcraft_docx::read_with_password'
+require_fn "crates/docx/src/lib.rs"   'pub enum DocxError'         'wordcraft_docx::DocxError'
+require_fn "crates/docx/Cargo.toml"   '^name = "wordcraft-docx"'   'wordcraft-docx crate name'
+# The PDF exporter, and the font database the binding asks about missing fonts.
+require_fn "crates/pdf/src/lib.rs"    'pub fn export\('            'wordcraft_pdf::export'
+require_fn "crates/pdf/src/lib.rs"    'pub struct PdfOptions'      'wordcraft_pdf::PdfOptions'
+require_fn "crates/pdf/src/lib.rs"    'pub enum PdfError'          'wordcraft_pdf::PdfError'
+require_fn "crates/pdf/Cargo.toml"    '^name = "wordcraft-pdf"'    'wordcraft-pdf crate name'
+require_fn "crates/fonts/src/fontdb.rs" 'pub fn fallback_for\('   'wordcraft_fonts::FontDb::fallback_for'
+require_fn "crates/fonts/src/fontdb.rs" 'pub fn global\('          'wordcraft_fonts::FontDb::global'
+require_fn "crates/fonts/Cargo.toml"  '^name = "wordcraft-fonts"'  'wordcraft-fonts crate name'
 
 if [[ $missing -ne 0 ]]; then
   die "an upstream item the binding needs is gone; update native/src/lib.rs before continuing"
 fi
 
+# ---------------------------------------------------------------------------
+# 4b. Mirror upstream's `[patch.crates-io]` into native/Cargo.toml.
+#
+# native/ is its own Cargo workspace root, so upstream's `[patch.crates-io]` is
+# not seen when this project builds: the PDF backend (krilla, a fork of the
+# registry crate in storytold/craft-libs) would resolve from crates.io and fail
+# to compile against craft-pdf. The binding therefore carries its own copy of the
+# patch, and this step keeps the pin in step with upstream.
+# ---------------------------------------------------------------------------
+say "==> checking the PDF backend patches"
+require_fn "Cargo.toml" '^\[patch\.crates-io\]'                     'upstream [patch.crates-io]'
+require_fn "Cargo.toml" '^krilla = \{ git = '                        'upstream krilla patch'
+require_fn "Cargo.toml" '^craft-pdf = \{ git = '                      'upstream craft-pdf dependency'
+
+UP_KR_REV="$(grep -E '^krilla = \{ git = ' "$SUB_DIR/Cargo.toml" | grep -oE 'rev = "[0-9a-f]+"' | head -1 | cut -d'"' -f2)"
+UP_CP_REV="$(grep -E '^craft-pdf = \{ git = ' "$SUB_DIR/Cargo.toml" | grep -oE 'rev = "[0-9a-f]+"' | head -1 | cut -d'"' -f2)"
+[[ -n "$UP_KR_REV" ]] || die "upstream no longer patches krilla; review native/Cargo.toml and UPSTREAM.md"
+[[ -n "$UP_CP_REV" ]] || die "upstream's craft-pdf dependency has no rev pin"
+note "upstream: craft-pdf $UP_CP_REV, krilla patch $UP_KR_REV"
+
+NATIVE_TOML="$ROOT/native/Cargo.toml"
+if ! grep -q '^\[patch\.crates-io\]' "$NATIVE_TOML"; then
+  die "native/Cargo.toml has no [patch.crates-io] section for krilla"
+fi
+if grep -qE "^krilla = \{ git = \"[^\"]*\", rev = \"$UP_KR_REV\"" "$NATIVE_TOML"; then
+  note "ok  native krilla patch already at $UP_KR_REV"
+else
+  # Rewrite only the rev, so the git URL and the version requirement stay as
+  # reviewed; a changed URL is a human decision.
+  python3 - "$NATIVE_TOML" "$UP_KR_REV" <<'PYEOF'
+import re, sys
+path, rev = sys.argv[1:3]
+text = open(path, encoding="utf-8").read()
+pattern = re.compile(r'^(krilla = \{ git = "[^"]+", rev = ")[0-9a-f]+(")', re.M)
+if not pattern.search(text):
+    sys.exit("no krilla patch line to update in native/Cargo.toml")
+open(path, "w", encoding="utf-8").write(pattern.sub(lambda m: m.group(1) + rev + m.group(2), text, count=1))
+PYEOF
+  note "updated native krilla patch to $UP_KR_REV (review native/Cargo.toml)"
+fi
+
+# The lock file must follow the new patch; `cargo update` would also move the
+# other pins, so only the two forge-backed packages are refreshed.
+(
+  cd "$ROOT/native"
+  CARGO_HOME="${CARGO_HOME:-$ROOT/.dev/cargo-home}" cargo update -p krilla -p craft-pdf 2>/dev/null || true
+)
+note "native/Cargo.lock refreshed for krilla and craft-pdf"
+
+# The crates the package must not pull in, even transitively.
+say "==> checking the dependency graph stays narrow"
+for forbidden in wordcraft-engine wordcraft-render wordcraft-ui-egui wordcraft-mcp wordcraft-cli wordcraft-zotero; do
+  if grep -qE "^name = \"$forbidden\"" "$ROOT/native/Cargo.lock"; then
+    die "$forbidden is in native/Cargo.lock; the binding must not depend on it"
+  fi
+  note "ok  absent: $forbidden"
+done
+if grep -qE '^name = "(egui|eframe|rayon)"' "$ROOT/native/Cargo.lock"; then
+  die "a GUI or thread-pool dependency (egui/eframe/rayon) is in native/Cargo.lock"
+fi
+note "ok  no GUI dependencies"
+
 # Error variants are matched exhaustively in the binding, so a new one breaks the
 # build; warn early anyway with a readable diff.
 say "==> diffing the error enums"
-for f in crates/docbin/src/lib.rs crates/docx/src/lib.rs; do
+for f in crates/docbin/src/lib.rs crates/docx/src/lib.rs crates/pdf/src/lib.rs; do
   if git -C "$SUB_DIR" diff --unified=0 "$OLD_SHA" "$NEW_SHA" -- "$f" 2>/dev/null | grep -qE '^\+.*(=>|\{$)'; then
-    note "changed: $f (review the DocbinError/DocxError matching in native/src/lib.rs)"
+    note "changed: $f (review the DocbinError/DocxError/PdfError matching in native/src/lib.rs)"
   else
     note "unchanged: $f"
   fi
@@ -128,11 +202,17 @@ const files = fs.readdirSync(dir).filter((f) => f.endsWith(".doc"));
 if (files.length === 0) { console.error("no .doc fixtures in " + dir); process.exit(1); }
 (async () => {
   for (const file of files) {
-    const bytes = await addon.convertDocToDocx(fs.readFileSync(path.join(dir, file)));
-    if (!bytes || bytes.length === 0) throw new Error(file + ": empty output");
-    if (bytes.readUInt32LE(0) !== 0x04034b50) throw new Error(file + ": output is not a zip");
+    const input = fs.readFileSync(path.join(dir, file));
+    const docx = await addon.convertDocToDocx(input);
+    if (!docx || docx.length === 0) throw new Error(file + ": empty DOCX output");
+    if (docx.readUInt32LE(0) !== 0x04034b50) throw new Error(file + ": DOCX output is not a zip");
+    const pdf = await addon.convertDocToPdf(input);
+    if (!pdf || pdf.length === 0) throw new Error(file + ": empty PDF output");
+    if (pdf.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error(file + ": DOC to PDF output is not a PDF");
+    const pdf2 = await addon.convertDocxToPdf(docx);
+    if (!pdf2 || pdf2.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error(file + ": DOCX to PDF output is not a PDF");
   }
-  console.log(files.length + " fixture(s) converted");
+  console.log(files.length + " fixture(s) converted to DOCX and PDF");
 })().catch((err) => { console.error(err.message); process.exit(1); });
 ' "$nodefile" "$SAMPLES")" || die "smoke test failed"
 note "$SMOKE_OUTPUT"
@@ -168,19 +248,19 @@ fi
 # ---------------------------------------------------------------------------
 # 7. Stage the new pointer and summarise.
 # ---------------------------------------------------------------------------
-git add "$SUB" "$UPSTREAM_MD" native/Cargo.lock
+git add "$SUB" "$UPSTREAM_MD" native/Cargo.toml native/Cargo.lock
 say "==> done"
 cat <<EOF
 
   upstream:  $OLD_SHA -> $NEW_SHA ($KIND $REF)
   build:     ok
   smoke:     $SMOKE_OUTPUT
-  staged:    $SUB, UPSTREAM.md, native/Cargo.lock
+  staged:    $SUB, UPSTREAM.md, native/Cargo.toml, native/Cargo.lock
 
   Nothing was committed and nothing was published. Next:
 
     git diff --cached --submodule=log -- $SUB     # review the staged upstream changes
-    git diff --cached -- UPSTREAM.md native/Cargo.lock
+    git diff --cached -- UPSTREAM.md native/Cargo.toml native/Cargo.lock
     git commit -m "chore(upstream): sync WordCraft to $REF"
 
   Then rebuild the release artifacts before publishing:

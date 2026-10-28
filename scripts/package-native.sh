@@ -43,6 +43,12 @@ mkdir -p "$(dirname "$LICENSE_REPORT")"
   exit 1
 }
 
+# A cap on the addon's size: the format crates and the PDF exporter together come
+# to roughly 15 MiB stripped, while pulling in the whole Engine (GUI, image
+# stack, UI fonts) would add tens of MiB. Failing here catches that mistake
+# before a multi-megabyte binary reaches npm.
+MAX_BINARY_BYTES=$((64 * 1024 * 1024))
+
 rm -rf "$DIST"
 mkdir -p "$DIST"
 
@@ -53,6 +59,14 @@ for entry in "${TARGETS[@]}"; do
     echo "missing $nodefile; run scripts/build-native.sh --target $triple" >&2
     exit 1
   fi
+
+  binary_size="$(stat -c %s "$nodefile")"
+  if (( binary_size > MAX_BINARY_BYTES )); then
+    echo "$(basename "$nodefile") is $binary_size bytes, above the $MAX_BINARY_BYTES-byte cap;" >&2
+    echo "an upstream component that does not belong here is probably linked in (egui, render, engine, craft-fonts)" >&2
+    exit 1
+  fi
+  printf '    %s: %s bytes\n' "$suffix" "$binary_size"
 
   pkg="$DIST/npm/$BASE-$suffix"
   mkdir -p "$pkg"

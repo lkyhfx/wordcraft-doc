@@ -2,8 +2,8 @@ wordcraft-doc
 =============
 
 This package is a Node.js binding for WordCraft, a Rust implementation of the
-Word 97-2003 binary format (.doc, [MS-DOC]) reader and the DOCX (OOXML
-WordprocessingML) writer.
+Word 97-2003 binary format (.doc, [MS-DOC]) reader, the DOCX (OOXML
+WordprocessingML) reader and writer, and the PDF exporter.
 
 Upstream project: https://github.com/storytold/wordcraft
 Upstream version: see UPSTREAM.md
@@ -13,6 +13,17 @@ Upstream copyright: 2026 ArtCraft Team and the WordCraft contributors
 The upstream source is used unmodified, as a git submodule at
 upstream/wordcraft. Only the binding layer (native/), the npm packaging
 (npm/, scripts/) and the tests are original to this project.
+
+The PDF exporter draws with craft-pdf and its backend krilla, both from
+https://github.com/storytold/craft-libs (MIT OR Apache-2.0), pinned by git
+revision in native/Cargo.toml and upstream/wordcraft/Cargo.toml.
+
+Fonts are not bundled or shipped by this package beyond the four OFL families
+WordCraft itself compiles in (Source Sans 3, Source Serif 4, Inter, JetBrains
+Mono, all SIL Open Font License 1.1, texts in upstream/wordcraft/assets/fonts).
+Every other glyph comes from the fonts installed on the deployment machine;
+this package installs none and fetches none over the network. A CJK font must
+be installed by whoever deploys it.
 
 The published npm main package and each platform package include a generated
 THIRD-PARTY-LICENSES.md report with the license texts for the resolved native

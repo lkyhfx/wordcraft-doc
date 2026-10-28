@@ -128,7 +128,11 @@ if [[ ${#DRY_RUN[@]} -eq 0 ]]; then
 
     cd \$(mktemp -d) && npm init -y
     npm install @lkyhfx/wordcraft-doc@$VERSION
-    node -e "const {convertDocToDocx}=require('@lkyhfx/wordcraft-doc'); console.log(typeof convertDocToDocx)"
+    node -e "const p=require('@lkyhfx/wordcraft-doc'); \
+      console.log(Object.keys(p).filter((k) => !k.startsWith('__')).join(' '))"
+
+  Expect convertDocToDocx, convertDocFileToDocx, convertDocToPdf,
+  convertDocFileToPdf, convertDocxToPdf and convertDocxFileToPdf.
 
   If the release is wrong, unpublish within 72 hours:
 

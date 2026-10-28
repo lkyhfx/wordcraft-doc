@@ -17,6 +17,9 @@ export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-was
  */
 export declare function convertDocFileToDocx(inputPath: string, outputPath: string, options?: ConvertOptions | undefined | null): Promise<void>
 
+/** Convert a `.doc` file on disk into a PDF file on disk. */
+export declare function convertDocFileToPdf(inputPath: string, outputPath: string, options?: ConvertOptions | undefined | null): Promise<void>
+
 /**
  * Convert the bytes of a legacy Word `.doc` file into a `.docx` package.
  *
@@ -25,15 +28,26 @@ export declare function convertDocFileToDocx(inputPath: string, outputPath: stri
  */
 export declare function convertDocToDocx(input: Buffer, options?: ConvertOptions | undefined | null): Promise<Buffer>
 
-/** Options accepted by both conversion functions. */
+/** Convert the bytes of a legacy Word `.doc` file into a PDF. */
+export declare function convertDocToPdf(input: Buffer, options?: ConvertOptions | undefined | null): Promise<Buffer>
+
+/** Convert a `.docx` file on disk into a PDF file on disk. */
+export declare function convertDocxFileToPdf(inputPath: string, outputPath: string, options?: ConvertOptions | undefined | null): Promise<void>
+
+/** Convert the bytes of a `.docx` package (`.docx`, `.docm`, `.dotx`, `.dotm`) into a PDF. */
+export declare function convertDocxToPdf(input: Buffer, options?: ConvertOptions | undefined | null): Promise<Buffer>
+
+/** Options accepted by every conversion function. */
 export interface ConvertOptions {
   /**
-   * Password of a password-protected (XOR/RC4/RC4 CryptoAPI) document.
-   * Ignored for unprotected files.
+   * Password of a password-protected document (`.doc`: XOR/RC4/RC4 CryptoAPI;
+   * `.docx`: ECMA-376 agile encryption). Ignored for unprotected files.
    */
   password?: string
   /** Largest accepted input in bytes. Defaults to 512 MiB. */
   maxInputBytes?: number
   /** Largest accepted final output size in bytes. Checked after the writer finishes; this is not a peak-memory limit. Defaults to 1 GiB. */
   maxOutputBytes?: number
+  /** Reject a document whose text needs a character no installed font can draw, instead of writing missing-glyph boxes. Defaults to `true`. */
+  requireFonts?: boolean
 }
