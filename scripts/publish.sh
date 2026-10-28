@@ -61,6 +61,36 @@ for file in "${PLATFORMS[@]}" "$MAIN"; do
   [[ -f "$DIST/$file" ]] || die "missing $DIST/$file; run scripts/package-native.sh"
 done
 
+node - "$DIST" "$VERSION" "${PLATFORMS[@]}" "$MAIN" <<'JS'
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+const [dist, expectedVersion, ...files] = process.argv.slice(2);
+const packages = files.map((file) => ({
+  file,
+  pkg: JSON.parse(execFileSync('tar', ['-xzOf', path.join(dist, file), 'package/package.json'], { encoding: 'utf8' })),
+}));
+for (const { file, pkg } of packages) {
+  if (pkg.version !== expectedVersion) {
+    console.error(`version mismatch in ${file}: expected ${expectedVersion}, got ${pkg.version}`);
+    process.exit(1);
+  }
+}
+const main = packages.find(({ pkg }) => pkg.name === '@lkyhfx/wordcraft-doc')?.pkg;
+if (!main) {
+  console.error('main package manifest is missing');
+  process.exit(1);
+}
+for (const name of [
+  '@lkyhfx/wordcraft-doc-linux-x64-gnu',
+  '@lkyhfx/wordcraft-doc-linux-arm64-gnu',
+]) {
+  if (main.optionalDependencies?.[name] !== expectedVersion) {
+    console.error(`optionalDependency version mismatch for ${name}`);
+    process.exit(1);
+  }
+}
+JS
+
 publish_one() {
   local file="$1"
   local name version
