@@ -23,7 +23,7 @@ const DEFAULT_MAX_INPUT_BYTES: u32 = 512 * 1024 * 1024;
 /// Default cap on the produced output size (1 GiB).
 const DEFAULT_MAX_OUTPUT_BYTES: u32 = 1024 * 1024 * 1024;
 
-/// How many distinct characters the font check looks at before it stops.
+/// Maximum distinct renderable characters checked; exceeding it is an error, not a pass.
 const FONT_CHECK_MAX_CHARS: usize = 8192;
 /// How many uncovered characters the font error names before it summarises.
 const FONT_CHECK_MAX_REPORTED: usize = 8;
@@ -308,6 +308,30 @@ fn verify_docx(bytes: &[u8]) -> std::result::Result<(), ConvError> {
 
 /// Check that the exporter produced a complete PDF file: the header, a page
 /// object, the cross-reference offset and the end-of-file marker.
+fn has_pdf_page_object(bytes: &[u8]) -> bool {
+    const TYPE_TAG: &[u8] = b"/Type";
+    const PAGE_NAME: &[u8] = b"/Page";
+    bytes.windows(TYPE_TAG.len()).enumerate().any(|(index, window)| {
+        if window != TYPE_TAG {
+            return false;
+        }
+        let mut value_start = index + TYPE_TAG.len();
+        while bytes.get(value_start).is_some_and(|b| b.is_ascii_whitespace()) {
+            value_start += 1;
+        }
+        if !bytes.get(value_start..).is_some_and(|suffix| suffix.starts_with(PAGE_NAME)) {
+            return false;
+        }
+        let boundary = value_start + PAGE_NAME.len();
+        bytes.get(boundary).map_or(true, |next| {
+            next.is_ascii_whitespace()
+                || matches!(*next, b'/' | b'>' | b'<' | b'[' | b']' | b'(' | b')' | b'{' | b'}' | b'%')
+        })
+    })
+}
+
+/// Check that the exporter produced a complete PDF file: header, page object,
+/// cross-reference offset and end-of-file marker.
 fn verify_pdf(bytes: &[u8]) -> std::result::Result<(), ConvError> {
     if bytes.is_empty() {
         return Err(ConvError::new(ERR_PDF, "the exporter produced no output"));
@@ -315,26 +339,86 @@ fn verify_pdf(bytes: &[u8]) -> std::result::Result<(), ConvError> {
     if !bytes.starts_with(b"%PDF-") {
         return Err(ConvError::new(ERR_PDF, "output does not start with a PDF header"));
     }
-    // A page object is `/Type /Page` or `/Type/Page`, and its tree node is
-    // `/Type/Pages`; the tag is followed by whatever ends the name (`/`, `>`,
-    // a newline or a space), never by a letter.
-    const PAGE_TAG: &[u8] = b"/Type/Page";
-    let has_page = bytes
-        .windows(PAGE_TAG.len() + 1)
-        .any(|window| window.starts_with(PAGE_TAG) && !window[PAGE_TAG.len()].is_ascii_alphabetic());
-    if !has_page {
+    if !has_pdf_page_object(bytes) {
         return Err(ConvError::new(ERR_PDF, "output has no page object"));
     }
-    // The trailer, its xref offset and the EOF marker all sit in the tail; a
-    // 2 KiB window is far more than the last few objects ever need.
-    let tail = &bytes[bytes.len().saturating_sub(2048)..];
-    for marker in [b"startxref".as_slice(), b"%%EOF".as_slice()] {
-        if !tail.windows(marker.len()).any(|window| window == marker) {
-            let missing = String::from_utf8_lossy(marker).into_owned();
-            return Err(ConvError::new(ERR_PDF, format!("output has no {missing} marker; it is truncated")));
-        }
+
+    // The final trailer markers should be near the end. Validate the numeric
+    // startxref offset instead of accepting a marker that appears in arbitrary
+    // trailing bytes.
+    let tail_start = bytes.len().saturating_sub(2048);
+    let tail = &bytes[tail_start..];
+    let startxref_marker = b"startxref";
+    let Some(startxref_pos) = tail.windows(startxref_marker.len()).rposition(|window| window == startxref_marker) else {
+        return Err(ConvError::new(ERR_PDF, "output has no startxref marker; it is truncated"));
+    };
+    let eof_marker = b"%%EOF";
+    let Some(eof_pos) = tail.windows(eof_marker.len()).rposition(|window| window == eof_marker) else {
+        return Err(ConvError::new(ERR_PDF, "output has no %%EOF marker; it is truncated"));
+    };
+    if eof_pos < startxref_pos {
+        return Err(ConvError::new(ERR_PDF, "the %%EOF marker precedes startxref"));
+    }
+
+    let after_startxref = &tail[startxref_pos + startxref_marker.len()..];
+    let first_non_whitespace = after_startxref.iter().position(|b| !b.is_ascii_whitespace()).unwrap_or(after_startxref.len());
+    let offset_bytes = &after_startxref[first_non_whitespace..];
+    let digit_count = offset_bytes.iter().take_while(|b| b.is_ascii_digit()).count();
+    if digit_count == 0 {
+        return Err(ConvError::new(ERR_PDF, "startxref carries no numeric offset"));
+    }
+    let offset = std::str::from_utf8(&offset_bytes[..digit_count])
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .ok_or_else(|| ConvError::new(ERR_PDF, "startxref offset is invalid"))?;
+    if offset >= bytes.len() {
+        return Err(ConvError::new(ERR_PDF, "startxref offset is outside the PDF"));
+    }
+    let xref = &bytes[offset..];
+    if !xref.starts_with(b"xref") || !xref.get(4).is_some_and(|b| b.is_ascii_whitespace()) {
+        return Err(ConvError::new(ERR_PDF, "startxref does not point to a cross-reference table"));
     }
     Ok(())
+}
+
+/// Refuse to export when the document's text needs a character no installed font
+/// can draw: the exporter would otherwise fill the page with missing-glyph boxes.
+///
+/// WordCraft bundles a handful of Latin OpenType faces and takes everything else
+/// from the system's font directories, so a bare container image has Latin text
+/// but no Chinese, Japanese or Korean. Coverage is asked of the same font
+/// database the layout uses, so an installed family, a fallback or a lazily
+/// loaded system font all count as available.
+/// Characters that affect shaping, direction, or presentation but do not need an
+/// independent visible glyph in the font. Checking them as ordinary characters
+/// can reject otherwise valid text containing joiners or variation selectors.
+fn is_non_rendering_format_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{034F}'
+            | '\u{061C}'
+            | '\u{180B}'..='\u{180F}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{206F}'
+            | '\u{FE00}'..='\u{FE0F}'
+            | '\u{FEFF}'
+            | '\u{E0000}'..='\u{E0FFF}'
+    )
+}
+
+/// Remember a character for font coverage checking. Returns Ok(false) for
+/// whitespace, formatting characters, or duplicates; returns Err(()) when a
+/// new character would exceed the budget.
+fn remember_font_char(c: char, seen: &mut HashSet<char>, max: usize) -> Result<bool, ()> {
+    if c.is_whitespace() || c.is_control() || is_non_rendering_format_char(c) || seen.contains(&c) {
+        return Ok(false);
+    }
+    if seen.len() >= max {
+        return Err(());
+    }
+    seen.insert(c);
+    Ok(true)
 }
 
 /// Refuse to export when the document's text needs a character no installed font
@@ -349,17 +433,22 @@ fn check_fonts(document: &Document) -> std::result::Result<(), ConvError> {
     let db = wordcraft_fonts::FontDb::global();
     let mut seen: HashSet<char> = HashSet::new();
     let mut missing: Vec<char> = Vec::new();
-    'stories: for story in document.shown_stories() {
+    for story in document.shown_stories() {
         for c in document.shown_text(story).chars() {
-            if c.is_whitespace() || c.is_control() || !seen.insert(c) {
+            let should_check = remember_font_char(c, &mut seen, FONT_CHECK_MAX_CHARS).map_err(|_| {
+                ConvError::new(
+                    ERR_FONTS,
+                    format!(
+                        "font coverage checking exceeded its {} distinct-character limit, so full coverage could not be verified. \
+                         Install fonts covering the document or pass {{ requireFonts: false }} to export without this check",
+                        FONT_CHECK_MAX_CHARS
+                    ),
+                )
+            })?;
+            if !should_check {
                 continue;
             }
-            // Bounded: a document with more distinct characters than this is
-            // checked only this far, so the scan cannot be made arbitrarily slow.
-            if seen.len() > FONT_CHECK_MAX_CHARS {
-                break 'stories;
-            }
-            // `u32::MAX` is never a loaded face's id, so the fallback search
+            // u32::MAX is never a loaded face's id, so the fallback search
             // considers every face it knows: bundled, installed and lazily
             // loaded system fonts alike.
             if db.fallback_for(c, u32::MAX).is_none() && missing.len() < FONT_CHECK_MAX_REPORTED {
@@ -560,5 +649,39 @@ impl Task for FileTask {
             Ok(()) => Ok(()),
             Err(err) => Err(err.into_napi(env)),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{has_pdf_page_object, is_non_rendering_format_char, remember_font_char};
+    use std::collections::HashSet;
+
+    #[test]
+    fn font_check_fails_closed_when_character_budget_is_exceeded() {
+        let mut seen = HashSet::new();
+        assert_eq!(remember_font_char('a', &mut seen, 2), Ok(true));
+        assert_eq!(remember_font_char('b', &mut seen, 2), Ok(true));
+        assert_eq!(remember_font_char('a', &mut seen, 2), Ok(false));
+        assert_eq!(remember_font_char('c', &mut seen, 2), Err(()));
+    }
+
+    #[test]
+    fn font_check_skips_non_rendering_format_characters() {
+        assert!(is_non_rendering_format_char('\u{200D}'));
+        assert!(is_non_rendering_format_char('\u{FE0F}'));
+        let mut seen = HashSet::new();
+        assert_eq!(remember_font_char('\u{200D}', &mut seen, 2), Ok(false));
+        assert_eq!(remember_font_char('\u{FE0F}', &mut seen, 2), Ok(false));
+        assert!(seen.is_empty());
+    }
+
+    #[test]
+    fn pdf_page_detection_handles_spacing_and_name_boundaries() {
+        assert!(has_pdf_page_object(b"/Type /Page "));
+        assert!(has_pdf_page_object(b"/Type/Page>"));
+        assert!(!has_pdf_page_object(b"/Type /Pages "));
+        assert!(!has_pdf_page_object(b"/Type /PageLabel "));
     }
 }
