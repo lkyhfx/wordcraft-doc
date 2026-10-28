@@ -85,7 +85,7 @@ for (const [pattern, what] of forbidden) {
   }
 }
 
-for (const required of ['package.json', 'index.js', 'index.d.ts']) {
+for (const required of ['package.json', 'index.js', 'index.d.ts', 'NOTICE', 'THIRD-PARTY-LICENSES.md']) {
   if (!files.includes(required)) {
     console.error(`    MISSING ${required}`);
     bad = 1;
@@ -99,6 +99,24 @@ if (!files.some((file) => file === 'LICENSE-MIT' || file === 'LICENSE')) {
 // The repository URL must point at GitHub, never at a local path or at the
 // upstream project.
 const pkg = require(join(dir, 'package.json'));
+const platformDir = join(require('node:path').dirname(dir), `wordcraft-doc-${suffix}`);
+const platformPkg = require(join(platformDir, 'package.json'));
+if (platformPkg.version !== pkg.version) {
+  console.error(`    VERSION MISMATCH platform=${platformPkg.version} main=${pkg.version}`);
+  bad = 1;
+}
+for (const [name, version] of Object.entries(pkg.optionalDependencies ?? {})) {
+  if (version !== pkg.version) {
+    console.error(`    OPTIONAL DEPENDENCY VERSION MISMATCH ${name}=${version} main=${pkg.version}`);
+    bad = 1;
+  }
+}
+for (const required of ['NOTICE', 'THIRD-PARTY-LICENSES.md']) {
+  if (!require('node:fs').existsSync(join(platformDir, required))) {
+    console.error(`    PLATFORM PACKAGE MISSING ${required}`);
+    bad = 1;
+  }
+}
 if (!/github\.com\/lkyhfx\/wordcraft-doc/.test(JSON.stringify(pkg.repository))) {
   console.error(`    BAD repository: ${JSON.stringify(pkg.repository)}`);
   bad = 1;
