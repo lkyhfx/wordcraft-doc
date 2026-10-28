@@ -1,0 +1,33 @@
+[package]
+name = "wordcraft-doc-node"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "Node.js bindings for converting legacy Word .doc files to .docx"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Only the three core WordCraft crates: the .doc reader, the document model and the .docx
+# writer. Everything else (layout, pdf, render, engine, ui, mcp, cli, zotero) stays out.
+wordcraft-docbin = { path = "../upstream/wordcraft/crates/docbin" }
+wordcraft-doc = { path = "../upstream/wordcraft/crates/doc" }
+wordcraft-docx = { path = "../upstream/wordcraft/crates/docx" }
+
+# Verifying the produced package needs a real zip reader.
+zip = { version = "3", default-features = false, features = ["deflate"] }
+
+napi = { version = "3", default-features = false, features = ["napi9"] }
+napi-derive = "3"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "unwind"

@@ -1,0 +1,3 @@
+[submodule "upstream/wordcraft"]
+	path = upstream/wordcraft
+	url = https://github.com/storytold/wordcraft.git

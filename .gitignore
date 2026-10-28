@@ -1,0 +1,20 @@
+# Local toolchains, cross-compilers, emulators, cargo/npm caches and scratch
+# space. None of this is part of the project.
+.dev/
+.tmp/
+
+# Build output
+native/target/
+target/
+npm/*.node
+npm-dist/
+
+# Node
+node_modules/
+npm-debug.log*
+.npm/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store

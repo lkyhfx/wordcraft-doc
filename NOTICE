@@ -1,0 +1,18 @@
+wordcraft-doc
+=============
+
+This package is a Node.js binding for WordCraft, a Rust implementation of the
+Word 97-2003 binary format (.doc, [MS-DOC]) reader and the DOCX (OOXML
+WordprocessingML) writer.
+
+Upstream project: https://github.com/storytold/wordcraft
+Upstream version: see UPSTREAM.md
+Upstream license: MIT OR Apache-2.0
+Upstream copyright: 2026 ArtCraft Team and the WordCraft contributors
+
+The upstream source is used unmodified, as a git submodule at
+upstream/wordcraft. Only the binding layer (native/), the npm packaging
+(npm/, scripts/) and the tests are original to this project.
+
+Third-party crates pulled in through the upstream cores are listed in
+Cargo.lock; their licenses are recorded in the crates' own metadata.

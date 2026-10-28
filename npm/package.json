@@ -1,0 +1,45 @@
+{
+  "name": "@lkyhfx/wordcraft-doc",
+  "version": "0.1.0",
+  "description": "Convert legacy Word .doc files to .docx with a native Node.js addon (prebuilt for Linux x64 and arm64)",
+  "keywords": [
+    "word",
+    "doc",
+    "docx",
+    "converter",
+    "ooxml",
+    "napi-rs",
+    "wordcraft"
+  ],
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lkyhfx/wordcraft-doc.git"
+  },
+  "homepage": "https://github.com/lkyhfx/wordcraft-doc#readme",
+  "bugs": "https://github.com/lkyhfx/wordcraft-doc/issues",
+  "engines": {
+    "node": ">=24"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "NOTICE"
+  ],
+  "napi": {
+    "binaryName": "wordcraft-doc",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu"
+    ]
+  },
+  "optionalDependencies": {
+    "@lkyhfx/wordcraft-doc-linux-x64-gnu": "0.1.0",
+    "@lkyhfx/wordcraft-doc-linux-arm64-gnu": "0.1.0"
+  }
+}
