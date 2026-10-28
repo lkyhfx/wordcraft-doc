@@ -306,8 +306,7 @@ fn verify_docx(bytes: &[u8]) -> std::result::Result<(), ConvError> {
     Ok(())
 }
 
-/// Check that the exporter produced a complete PDF file: the header, a page
-/// object, the cross-reference offset and the end-of-file marker.
+/// Detect a page dictionary entry while respecting PDF name boundaries.
 fn has_pdf_page_object(bytes: &[u8]) -> bool {
     const TYPE_TAG: &[u8] = b"/Type";
     const PAGE_NAME: &[u8] = b"/Page";
@@ -381,14 +380,6 @@ fn verify_pdf(bytes: &[u8]) -> std::result::Result<(), ConvError> {
     Ok(())
 }
 
-/// Refuse to export when the document's text needs a character no installed font
-/// can draw: the exporter would otherwise fill the page with missing-glyph boxes.
-///
-/// WordCraft bundles a handful of Latin OpenType faces and takes everything else
-/// from the system's font directories, so a bare container image has Latin text
-/// but no Chinese, Japanese or Korean. Coverage is asked of the same font
-/// database the layout uses, so an installed family, a fallback or a lazily
-/// loaded system font all count as available.
 /// Characters that affect shaping, direction, or presentation but do not need an
 /// independent visible glyph in the font. Checking them as ordinary characters
 /// can reject otherwise valid text containing joiners or variation selectors.
