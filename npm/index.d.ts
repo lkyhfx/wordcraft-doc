@@ -34,6 +34,6 @@ export interface ConvertOptions {
   password?: string
   /** Largest accepted input in bytes. Defaults to 512 MiB. */
   maxInputBytes?: number
-  /** Largest accepted final output size in bytes. Checked after the writer finishes; not a peak-memory limit. Defaults to 1 GiB. */
+  /** Largest accepted final output size in bytes. Checked after the writer finishes; this is not a peak-memory limit. Defaults to 1 GiB. */
   maxOutputBytes?: number
 }

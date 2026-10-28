@@ -1,6 +1,6 @@
 {
   "name": "@lkyhfx/wordcraft-doc",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Convert legacy Word .doc files to .docx with a native Node.js addon (prebuilt for Linux x64 and arm64)",
   "keywords": [
     "word",
@@ -40,7 +40,7 @@
     ]
   },
   "optionalDependencies": {
-    "@lkyhfx/wordcraft-doc-linux-x64-gnu": "0.1.0",
-    "@lkyhfx/wordcraft-doc-linux-arm64-gnu": "0.1.0"
+    "@lkyhfx/wordcraft-doc-linux-x64-gnu": "0.1.1",
+    "@lkyhfx/wordcraft-doc-linux-arm64-gnu": "0.1.1"
   }
 }

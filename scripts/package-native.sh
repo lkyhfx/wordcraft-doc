@@ -57,7 +57,9 @@ for entry in "${TARGETS[@]}"; do
   pkg="$DIST/npm/$BASE-$suffix"
   mkdir -p "$pkg"
   cp "$nodefile" "$pkg/"
-  cp "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$ROOT/NOTICE" "$LICENSE_REPORT" "$pkg/"
+  cp "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$ROOT/NOTICE" "$pkg/"
+  # The report is packed under the name `files` declares, not its scratch name.
+  cp "$LICENSE_REPORT" "$pkg/THIRD-PARTY-LICENSES.md"
 
   # A platform package carries nothing but the binary: no scripts, no deps.
   cat >"$pkg/package.json" <<JSON
@@ -86,7 +88,8 @@ done
 main="$DIST/npm/$BASE"
 mkdir -p "$main"
 cp "$NPM_DIR/index.js" "$NPM_DIR/index.d.ts" "$NPM_DIR/package.json" "$main/"
-cp "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$ROOT/NOTICE" "$ROOT/README.md" "$LICENSE_REPORT" "$main/"
+cp "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$ROOT/NOTICE" "$ROOT/README.md" "$main/"
+cp "$LICENSE_REPORT" "$main/THIRD-PARTY-LICENSES.md"
 
 # Keep the optional platform package versions aligned with the main package.
 node - "$main/package.json" "$VERSION" <<'JS'

@@ -37,7 +37,7 @@ published to npm as `@lkyhfx/wordcraft-doc`. The conversion itself is done by
 ```bash
 # todo: npm install once (provides the napi CLI into .dev/cli)
 ./scripts/build-native.sh --target all   # build both targets
-npm test                                 # 41 conversion tests
+npm test                                 # 43 conversion tests
 ./scripts/package-native.sh              # three tarballs into npm-dist/
 ./scripts/test-package.sh                # install + convert + typecheck
 ./scripts/sync-upstream.sh <tag>         # move the submodule, verify, stage
