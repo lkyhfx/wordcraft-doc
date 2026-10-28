@@ -79,3 +79,9 @@ git diff --submodule=log -- upstream/wordcraft
 git diff -- UPSTREAM.md
 git commit -m "chore(upstream): sync WordCraft to v0.12.0"
 ```
+
+## Released against this pin
+
+| Package version | Upstream tag | Upstream commit | Published |
+|---|---|---|---|
+| `@lkyhfx/wordcraft-doc@0.1.0` | v0.11.0 | e31f2f06a5f8004ceaa88f68c00b47908e321aa4 | 2026-10-28 |
