@@ -18,7 +18,8 @@
     "test": "node --test \"tests/**/*.test.ts\"",
     "test:package": "./scripts/test-package.sh",
     "package": "./scripts/package-native.sh",
-    "sync-upstream": "./scripts/sync-upstream.sh"
+    "sync-upstream": "./scripts/sync-upstream.sh",
+    "publish:packages": "./scripts/publish.sh"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.10.9"
