@@ -14,5 +14,7 @@ The upstream source is used unmodified, as a git submodule at
 upstream/wordcraft. Only the binding layer (native/), the npm packaging
 (npm/, scripts/) and the tests are original to this project.
 
-Third-party crates pulled in through the upstream cores are listed in
-Cargo.lock; their licenses are recorded in the crates' own metadata.
+The published npm main package and each platform package include a generated
+THIRD-PARTY-LICENSES.md report with the license texts for the resolved native
+Rust dependency graph. It is generated from native/Cargo.lock with cargo-about.
+The report supplements, and does not replace, each crate's applicable notices.
