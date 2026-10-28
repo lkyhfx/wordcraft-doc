@@ -23,8 +23,23 @@ TARGETS=(
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 
 command -v npm >/dev/null || { echo "npm not found" >&2; exit 1; }
+command -v cargo-about >/dev/null || {
+  echo "cargo-about not found; install it with: cargo install cargo-about --locked" >&2
+  exit 1
+}
 [[ -f "$NPM_DIR/index.js" && -f "$NPM_DIR/index.d.ts" ]] || {
   echo "npm/index.js or index.d.ts is missing; run scripts/build-native.sh first" >&2
+  exit 1
+}
+
+LICENSE_REPORT="$ROOT/.tmp/wordcraft-doc-third-party-licenses.md"
+mkdir -p "$(dirname "$LICENSE_REPORT")"
+(
+  cd "$ROOT/native"
+  cargo about generate "$ROOT/scripts/third-party-licenses.hbs"
+) > "$LICENSE_REPORT"
+[[ -s "$LICENSE_REPORT" ]] || {
+  echo "third-party license report is empty; refusing to package binaries" >&2
   exit 1
 }
 
@@ -42,7 +57,7 @@ for entry in "${TARGETS[@]}"; do
   pkg="$DIST/npm/$BASE-$suffix"
   mkdir -p "$pkg"
   cp "$nodefile" "$pkg/"
-  cp "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$pkg/"
+  cp "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$ROOT/NOTICE" "$LICENSE_REPORT" "$pkg/"
 
   # A platform package carries nothing but the binary: no scripts, no deps.
   cat >"$pkg/package.json" <<JSON
@@ -59,7 +74,7 @@ for entry in "${TARGETS[@]}"; do
   "cpu": ["$( [[ "$suffix" == *x64* ]] && echo x64 || echo arm64 )"],
   "libc": ["glibc"],
   "main": "$BASE.$suffix.node",
-  "files": ["$BASE.$suffix.node", "LICENSE-MIT", "LICENSE-APACHE"]
+  "files": ["$BASE.$suffix.node", "LICENSE-MIT", "LICENSE-APACHE", "NOTICE", "THIRD-PARTY-LICENSES.md"]
 }
 JSON
 
@@ -71,7 +86,26 @@ done
 main="$DIST/npm/$BASE"
 mkdir -p "$main"
 cp "$NPM_DIR/index.js" "$NPM_DIR/index.d.ts" "$NPM_DIR/package.json" "$main/"
-cp "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$ROOT/NOTICE" "$ROOT/README.md" "$main/"
+cp "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$ROOT/NOTICE" "$ROOT/README.md" "$LICENSE_REPORT" "$main/"
+
+# Keep the optional platform package versions aligned with the main package.
+node - "$main/package.json" "$VERSION" <<'JS'
+const fs = require('node:fs');
+const [manifestPath, version] = process.argv.slice(2);
+const pkg = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+const expected = [
+  '@lkyhfx/wordcraft-doc-linux-arm64-gnu',
+  '@lkyhfx/wordcraft-doc-linux-x64-gnu',
+].sort();
+const actual = Object.keys(pkg.optionalDependencies ?? {}).sort();
+if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+  console.error('optionalDependencies must exactly match the supported platform packages');
+  process.exit(1);
+}
+for (const name of expected) pkg.optionalDependencies[name] = version;
+fs.writeFileSync(manifestPath, JSON.stringify(pkg, null, 2) + '\n');
+JS
+
 ( cd "$main" && npm pack --pack-destination "$DIST" >/dev/null )
 say "packed $SCOPE/$BASE"
 
