@@ -132,6 +132,9 @@ npm install                        # dev tooling (napi CLI)
 npm test
 ./scripts/package-native.sh
 ./scripts/test-package.sh
+
+# Convert every test fixture into fixtures-docx/ for inspection
+node scripts/convert-fixtures.ts
 ```
 
 See [UPSTREAM.md](UPSTREAM.md) for the pinned upstream version and the sync

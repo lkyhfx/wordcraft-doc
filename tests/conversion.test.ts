@@ -69,6 +69,8 @@ describe('representation formats', () => {
     'empty.doc',
     '47304.doc',
     'rich-structures.doc',
+    // A real document written by Microsoft Word (Windows 10), 547 KB, 4 pictures.
+    '铁路多源数据智能检索系统设计与应用研究.doc',
   ];
 
   for (const name of documents) {
