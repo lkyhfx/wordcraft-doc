@@ -29,7 +29,8 @@
     "README.md",
     "LICENSE-MIT",
     "LICENSE-APACHE",
-    "NOTICE"
+    "NOTICE",
+    "THIRD-PARTY-LICENSES.md"
   ],
   "napi": {
     "binaryName": "wordcraft-doc",

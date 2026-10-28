@@ -10,7 +10,7 @@ package is the Node.js binding around them.
 - Node.js 24
 - Linux x64 and Linux arm64 (glibc)
 - Prebuilt binaries: no Rust toolchain and no LibreOffice needed at install time
-- One dependency-free package: the binary ships in a platform package
+- No runtime JavaScript dependencies; the native binary ships in a platform package
 
 ## Install
 
@@ -37,8 +37,11 @@ import { convertDocFileToDocx } from '@lkyhfx/wordcraft-doc';
 await convertDocFileToDocx('input.doc', 'output.docx');
 ```
 
-Both functions return a promise and run on the libuv thread pool, so the event
-loop keeps running while a large document converts.
+The parsing and writing work runs on the libuv thread pool. The Buffer API must
+snapshot the input before scheduling the worker because JavaScript can still
+mutate the original Buffer; that copy happens on the JavaScript thread. For
+large documents, prefer the file API: it reads the input on the worker thread
+and avoids that JavaScript-side copy.
 
 ## API
 
@@ -48,7 +51,7 @@ interface ConvertOptions {
   password?: string;
   /** Largest accepted input, in bytes. Default 512 MiB. */
   maxInputBytes?: number;
-  /** Largest accepted output, in bytes. Default 1 GiB. */
+  /** Largest accepted final DOCX size, checked after writing; not a peak-memory cap. Default 1 GiB. */
   maxOutputBytes?: number;
 }
 
@@ -130,6 +133,7 @@ cd wordcraft-doc
 npm install                        # dev tooling (napi CLI)
 ./scripts/build-native.sh --target all
 npm test
+cargo install cargo-about --locked # required to include third-party Rust license texts
 ./scripts/package-native.sh
 ./scripts/test-package.sh
 
@@ -142,6 +146,7 @@ procedure.
 
 ## License
 
-MIT OR Apache-2.0, matching upstream WordCraft. The upstream copyright notice
-and the third-party attribution are in [NOTICE](NOTICE) and
-[ATTRIBUTION.md](https://github.com/storytold/wordcraft/blob/main/ATTRIBUTION.md).
+MIT OR Apache-2.0, matching upstream WordCraft. The published main and platform
+packages include [NOTICE](NOTICE) and a generated `THIRD-PARTY-LICENSES.md`
+containing license texts for the resolved native Rust dependency graph. The
+report is generated from `native/Cargo.lock` with `cargo-about` during packaging.

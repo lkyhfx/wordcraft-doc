@@ -1,0 +1,15 @@
+# Third-party Rust dependency licenses
+
+This file is generated from `native/Cargo.lock` by `cargo-about`. It lists
+the licenses and dependency crates included in the native addon.
+
+{{#each licenses}}
+## {{name}}
+
+{{#each used_by}}
+- `{{crate.name}} {{crate.version}}`
+{{/each}}
+
+{{{text}}}
+
+{{/each}}

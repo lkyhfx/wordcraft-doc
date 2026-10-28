@@ -21,7 +21,7 @@ export declare function convertDocFileToDocx(inputPath: string, outputPath: stri
  * Convert the bytes of a legacy Word `.doc` file into a `.docx` package.
  *
  * Resolves with the DOCX bytes; rejects with an `Error` carrying a stable
- * `code` (see the `ERR_WORDCRAFT_*` constants in `index.d.ts`).
+ * `code` (see the README's Errors section).
  */
 export declare function convertDocToDocx(input: Buffer, options?: ConvertOptions | undefined | null): Promise<Buffer>
 
@@ -34,6 +34,6 @@ export interface ConvertOptions {
   password?: string
   /** Largest accepted input in bytes. Defaults to 512 MiB. */
   maxInputBytes?: number
-  /** Largest accepted output in bytes. Defaults to 1 GiB. */
+  /** Largest accepted final output size in bytes. Checked after the writer finishes; not a peak-memory limit. Defaults to 1 GiB. */
   maxOutputBytes?: number
 }
