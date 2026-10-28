@@ -322,9 +322,8 @@ fn has_pdf_page_object(bytes: &[u8]) -> bool {
             return false;
         }
         let boundary = value_start + PAGE_NAME.len();
-        bytes.get(boundary).map_or(true, |next| {
-            next.is_ascii_whitespace()
-                || matches!(*next, b'/' | b'>' | b'<' | b'[' | b']' | b'(' | b')' | b'{' | b'}' | b'%')
+        bytes.get(boundary).is_none_or(|next| {
+            next.is_ascii_whitespace() || matches!(*next, b'/' | b'>' | b'<' | b'[' | b']' | b'(' | b')' | b'{' | b'}' | b'%')
         })
     })
 }
@@ -398,15 +397,22 @@ fn is_non_rendering_format_char(c: char) -> bool {
     )
 }
 
-/// Remember a character for font coverage checking. Returns Ok(false) for
-/// whitespace, formatting characters, or duplicates; returns Err(()) when a
-/// new character would exceed the budget.
-fn remember_font_char(c: char, seen: &mut HashSet<char>, max: usize) -> Result<bool, ()> {
+/// The font check had to stop before it could verify every character.
+///
+/// A unit-like type of its own: the crate imports `napi`'s `Result` alias, and a
+/// plain `()` error would make the returns read as `napi::Result<bool>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BudgetExceeded;
+
+/// Remember a character for font coverage checking. Returns `Ok(false)` for
+/// whitespace, formatting characters, or duplicates; returns `Err` when a new
+/// character would exceed the budget.
+fn remember_font_char(c: char, seen: &mut HashSet<char>, max: usize) -> std::result::Result<bool, BudgetExceeded> {
     if c.is_whitespace() || c.is_control() || is_non_rendering_format_char(c) || seen.contains(&c) {
         return Ok(false);
     }
     if seen.len() >= max {
-        return Err(());
+        return Err(BudgetExceeded);
     }
     seen.insert(c);
     Ok(true)
@@ -643,10 +649,9 @@ impl Task for FileTask {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::{has_pdf_page_object, is_non_rendering_format_char, remember_font_char};
+    use super::{BudgetExceeded, has_pdf_page_object, is_non_rendering_format_char, remember_font_char};
     use std::collections::HashSet;
 
     #[test]
@@ -655,7 +660,7 @@ mod tests {
         assert_eq!(remember_font_char('a', &mut seen, 2), Ok(true));
         assert_eq!(remember_font_char('b', &mut seen, 2), Ok(true));
         assert_eq!(remember_font_char('a', &mut seen, 2), Ok(false));
-        assert_eq!(remember_font_char('c', &mut seen, 2), Err(()));
+        assert_eq!(remember_font_char('c', &mut seen, 2), Err(BudgetExceeded));
     }
 
     #[test]
