@@ -19,7 +19,8 @@
     "test:package": "./scripts/test-package.sh",
     "package": "./scripts/package-native.sh",
     "sync-upstream": "./scripts/sync-upstream.sh",
-    "publish:packages": "./scripts/publish.sh"
+    "publish:packages": "./scripts/publish.sh",
+    "convert-fixtures": "node scripts/convert-fixtures.ts"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.10.9"
