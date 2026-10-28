@@ -8,7 +8,7 @@
  *   node --test tests/
  */
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -326,6 +326,30 @@ describe('convertDocFileToDocx', () => {
     const written = await readFile(target);
     assertDocxPackage(written);
     assert.ok(written.length > 100);
+  });
+
+  test('rejects identical input and output paths without modifying the source', async () => {
+    const source = join(scratch, 'same-path.doc');
+    await copyFile(fixture('test.doc'), source);
+    const original = await readFile(source);
+
+    await assert.rejects(convertDocFileToDocx(source, source), {
+      code: 'ERR_WORDCRAFT_IO',
+    });
+    assert.deepEqual(await readFile(source), original);
+  });
+
+  test('keeps an existing output untouched when conversion fails', async () => {
+    const source = join(scratch, 'invalid-source.doc');
+    const target = join(scratch, 'preserved-output.docx');
+    const marker = Buffer.from('existing output must survive a failed conversion');
+    await writeFile(source, 'not a Word document');
+    await writeFile(target, marker);
+
+    await assert.rejects(convertDocFileToDocx(source, target), {
+      code: 'ERR_WORDCRAFT_NOT_A_DOC',
+    });
+    assert.deepEqual(await readFile(target), marker);
   });
 
   test('rejects when the input file does not exist', async () => {
