@@ -76,7 +76,7 @@ git -C "$SUB_DIR" checkout --detach "$NEW_SHA" >/dev/null
 say "==> checking the upstream API the binding relies on"
 missing=0
 require_fn() { # file, pattern, description
-  if ! grep -qE "$2" "$ROOT/$SUB/$1" 2>/dev/null; then
+  if ! grep -rqE "$2" "$ROOT/$SUB/$1" 2>/dev/null; then
     note "MISSING $3 ($1)"
     missing=1
   else
@@ -96,12 +96,12 @@ require_fn "crates/docx/src/lib.rs"   'pub fn read_with_password\(' 'wordcraft_d
 require_fn "crates/docx/src/lib.rs"   'pub enum DocxError'         'wordcraft_docx::DocxError'
 require_fn "crates/docx/Cargo.toml"   '^name = "wordcraft-docx"'   'wordcraft-docx crate name'
 # The PDF exporter, and the font database the binding asks about missing fonts.
-require_fn "crates/pdf/src/lib.rs"    'pub fn export\('            'wordcraft_pdf::export'
-require_fn "crates/pdf/src/lib.rs"    'pub struct PdfOptions'      'wordcraft_pdf::PdfOptions'
-require_fn "crates/pdf/src/lib.rs"    'pub enum PdfError'          'wordcraft_pdf::PdfError'
+require_fn "crates/pdf/src"           'pub fn export\('            'wordcraft_pdf::export'
+require_fn "crates/pdf/src"           'pub struct PdfOptions'      'wordcraft_pdf::PdfOptions'
+require_fn "crates/pdf/src"           'pub enum PdfError'          'wordcraft_pdf::PdfError'
 require_fn "crates/pdf/Cargo.toml"    '^name = "wordcraft-pdf"'    'wordcraft-pdf crate name'
-require_fn "crates/fonts/src/fontdb.rs" 'pub fn fallback_for\('   'wordcraft_fonts::FontDb::fallback_for'
-require_fn "crates/fonts/src/fontdb.rs" 'pub fn global\('          'wordcraft_fonts::FontDb::global'
+require_fn "crates/fonts/src"         'pub fn fallback_for\('     'wordcraft_fonts::FontDb::fallback_for'
+require_fn "crates/fonts/src"         'pub fn global\('            'wordcraft_fonts::FontDb::global'
 require_fn "crates/fonts/Cargo.toml"  '^name = "wordcraft-fonts"'  'wordcraft-fonts crate name'
 
 if [[ $missing -ne 0 ]]; then
@@ -173,7 +173,7 @@ note "ok  no GUI dependencies"
 # Error variants are matched exhaustively in the binding, so a new one breaks the
 # build; warn early anyway with a readable diff.
 say "==> diffing the error enums"
-for f in crates/docbin/src/lib.rs crates/docx/src/lib.rs crates/pdf/src/lib.rs; do
+for f in crates/docbin/src/lib.rs crates/docx/src/lib.rs crates/pdf/src; do
   if git -C "$SUB_DIR" diff --unified=0 "$OLD_SHA" "$NEW_SHA" -- "$f" 2>/dev/null | grep -qE '^\+.*(=>|\{$)'; then
     note "changed: $f (review the DocbinError/DocxError/PdfError matching in native/src/lib.rs)"
   else
