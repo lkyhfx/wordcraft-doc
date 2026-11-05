@@ -40,4 +40,4 @@ panic = "unwind"
 # patch lives here because native/ is its own workspace root, so upstream's own
 # Cargo.toml is not consulted for it.
 [patch.crates-io]
-krilla = { git = "https://github.com/storytold/craft-libs", rev = "17744430be327d0257496a6a31c8d38fe20a6756" }
+krilla = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }

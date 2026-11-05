@@ -5,9 +5,9 @@ The WordCraft source this package is built on.
 ## Record
 
 - Repository: `https://github.com/storytold/wordcraft`
-- Tag: v0.11.0
-- Commit: e31f2f06a5f8004ceaa88f68c00b47908e321aa4
-- Last sync: 2026-10-28
+- Tag: v0.15.2
+- Commit: edfea68101220c9bdc4b2b0ccf4acd9612bedb6e
+- Last sync: 2026-11-05
 - Submodule: `upstream/wordcraft`
 
 ## How it is consumed
