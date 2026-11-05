@@ -137,3 +137,4 @@ git commit -m "chore(upstream): sync WordCraft to v0.12.0"
 | `@lkyhfx/wordcraft-doc@0.1.0` | v0.11.0 | e31f2f06a5f8004ceaa88f68c00b47908e321aa4 | 2026-10-28 |
 | `@lkyhfx/wordcraft-doc@0.1.1` | v0.11.0 | e31f2f06a5f8004ceaa88f68c00b47908e321aa4 | 2026-10-28 |
 | `@lkyhfx/wordcraft-doc@0.1.2` | v0.11.0 | e31f2f06a5f8004ceaa88f68c00b47908e321aa4 | 2026-10-28 |
+| `@lkyhfx/wordcraft-doc@0.1.3` | v0.15.2 | edfea68101220c9bdc4b2b0ccf4acd9612bedb6e | 2026-11-05 |
