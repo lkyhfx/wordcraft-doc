@@ -67,7 +67,12 @@ check_one() {
   grep -q 'Type:.*DYN' <<<"$header" || die "$name: not a shared object"
   note "ELF64 $expected_machine shared object, $(stat -c %s "$file") bytes"
 
-  readelf -W --dyn-syms "$file" | grep -q 'napi_register_module_v1' || \
+  # Avoid readelf | grep -q with pipefail: grep's early exit can SIGPIPE
+  # readelf and wrongly reject an otherwise valid shared library.
+  local dynamic_symbols
+  dynamic_symbols="$(readelf -W --dyn-syms "$file")" ||
+    die "$name: could not inspect dynamic symbols"
+  grep -q 'napi_register_module_v1' <<<"$dynamic_symbols" ||
     die "$name: no napi_register_module_v1 export; this is not a Node-API addon"
   note "NAPI entry point: napi_register_module_v1"
 

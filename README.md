@@ -296,7 +296,22 @@ npm inside that userland, and converts a document through the installed package
 name. arm64 runs under `qemu-aarch64-static`. Docker/skopeo is needed only for
 this compatibility test, never for building. `scripts/publish.sh` runs this
 test, the isolated-install test and the ELF check against the tarball contents
-before any package reaches the registry.
+before any package reaches the registry. Node.js archives are validated against
+the official Node SHASUMS256.txt prior to extraction.
+
+For an auditable release, provide a digest-pinned multi-architecture Debian 10
+image when publishing:
+
+```bash
+# Resolve and verify the multi-architecture digest (for example with skopeo).
+skopeo inspect docker://docker.io/library/debian:10-slim | grep Digest
+DEBIAN_10_IMAGE="docker.io/library/debian@sha256:<verified-manifest-digest>" \
+  ./scripts/publish.sh --dry-run
+```
+
+An unpinned `debian:10-slim` image is permitted only for local testing:
+`publish.sh` requires an immutable digest. The cached userland tracks its image
+reference and architecture so changing the reference forces a fresh extraction.
 
 The glibc 2.28 ceiling is not configurable for a release: `GLIBC_BASELINE` can
 be changed while experimenting with a build, but the compatibility check always

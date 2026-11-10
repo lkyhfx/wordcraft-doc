@@ -18,6 +18,8 @@ CACHE="$ROOT/.dev/glibc-test"
 NODE_VERSION="${NODE_VERSION:-24.10.0}"
 GLIBC_BASELINE="2.28"
 QEMU="${QEMU_AARCH64:-$ROOT/.dev/qemu-aarch64-static}"
+# An immutable multi-architecture image digest is mandatory for releases.
+IMAGE_REF="${DEBIAN_10_IMAGE:-docker.io/library/debian:10-slim}"
 
 say()  { printf '\033[1m==> %s\033[0m\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
@@ -32,6 +34,11 @@ MAIN_TAR="$ROOT/npm-dist/lkyhfx-wordcraft-doc-$VERSION.tgz"
 
 command -v docker >/dev/null || command -v skopeo >/dev/null || \
   die "neither skopeo nor docker found; one is needed to export Debian 10"
+command -v curl >/dev/null || die "curl not found"
+command -v sha256sum >/dev/null || die "sha256sum not found"
+if [[ "${REQUIRE_PINNED_TEST_IMAGE:-0}" == 1 && ! "$IMAGE_REF" =~ @sha256:[[:xdigit:]]{64}$ ]]; then
+  die "release verification requires DEBIAN_10_IMAGE=docker.io/library/debian@sha256:<immutable manifest digest>"
+fi
 mkdir -p "$CACHE"
 
 node_tree() {
@@ -40,48 +47,65 @@ node_tree() {
 }
 
 ensure_node() {
-  local arch="$1" tree
+  local arch="$1" tree archive checksums checksum
   tree="$(node_tree "$arch")"
-  [[ -x "$tree/bin/node" ]] && return
-  # A previously downloaded arm64 Node in .dev/ is the same official build.
-  local local_tree="$ROOT/.dev/node-v$NODE_VERSION-linux-$arch"
-  if [[ -x "$local_tree/bin/node" ]]; then
-    say "using $local_tree"
-    cp -a "$local_tree" "$tree"
-    return
+  archive="node-v$NODE_VERSION-linux-$arch.tar.xz"
+  checksums="$CACHE/node-v$NODE_VERSION-SHASUMS256.txt"
+  if [[ ! -s "$checksums" ]]; then
+    curl -fsSLo "$checksums" "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt" ||
+      die "could not fetch Node $NODE_VERSION checksums"
   fi
-  say "downloading Node $NODE_VERSION for linux-$arch"
-  curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$arch.tar.xz" |
-    tar -xJ -C "$CACHE"
-  [[ -x "$tree/bin/node" ]] || die "Node extraction failed for $arch"
+  checksum="$(awk -v file="$archive" '$2 == file {print $1}' "$checksums")"
+  [[ "$checksum" =~ ^[[:xdigit:]]{64}$ ]] ||
+    die "official Node checksums do not include $archive"
+  if [[ ! -f "$CACHE/$archive" ]]; then
+    say "downloading Node $NODE_VERSION for linux-$arch"
+    curl -fsSLo "$CACHE/$archive" "https://nodejs.org/dist/v$NODE_VERSION/$archive" ||
+      die "could not download $archive"
+  fi
+  printf '%s  %s\n' "$checksum" "$CACHE/$archive" | sha256sum -c --status ||
+    die "$archive checksum does not match the official Node SHASUMS256.txt"
+  [[ -x "$tree/bin/node" ]] && return
+  rm -rf "$tree"
+  tar -xJf "$CACHE/$archive" -C "$CACHE" ||
+    die "Node extraction failed for $arch"
+  [[ -x "$tree/bin/node" ]] || die "Node extraction did not create $tree/bin/node"
 }
 
 ensure_rootfs() {
-  local arch="$1" image rootfs layers layer
+  local arch="$1" oci_arch="$2" image="$IMAGE_REF" rootfs layers layer
   rootfs="$CACHE/rootfs-$arch"
-  if [[ -f "$rootfs/lib/x86_64-linux-gnu/libc.so.6" || -f "$rootfs/lib/aarch64-linux-gnu/libc.so.6" ]]; then
+  # OCI uses amd64, while Node.js and npm use x64. Cache by reference and
+  # platform so a test cannot silently reuse a different extracted userland.
+  if [[ -f "$rootfs/.image-source" &&
+        "$(cat "$rootfs/.image-source")" == "$image linux/$oci_arch" &&
+        ( -e "$rootfs/lib/x86_64-linux-gnu/libc.so.6" ||
+          -L "$rootfs/lib/x86_64-linux-gnu/libc.so.6" ||
+          -e "$rootfs/lib/aarch64-linux-gnu/libc.so.6" ||
+          -L "$rootfs/lib/aarch64-linux-gnu/libc.so.6" ) ]]; then
     return
   fi
-  image="debian:10-slim"
-  say "exporting $image ($arch) to $rootfs"
+  say "exporting $image (linux/$oci_arch) to $rootfs"
+  rm -rf "$rootfs"
   mkdir -p "$rootfs"
 
   if command -v skopeo >/dev/null; then
-    # skopeo does not need the Docker daemon, which may be unreachable.
+    # skopeo does not require a Docker daemon.
     layers="$CACHE/image-$arch"
     rm -rf "$layers"
     mkdir -p "$layers"
-    skopeo copy --override-arch "$arch" --override-os linux "docker://$image" "dir:$layers" >/dev/null
+    skopeo copy --override-arch "$oci_arch" --override-os linux "docker://$image" "dir:$layers" >/dev/null
     for layer in $(node -p "require('$layers/manifest.json').layers.map((l) => l.digest.slice(7)).join(' ')"); do
       tar -xf "$layers/$layer" -C "$rootfs" --no-same-owner 2>/dev/null
     done
   else
     local id
-    docker pull --platform "linux/$arch" "$image" >/dev/null
-    id="$(docker create --platform "linux/$arch" "$image")"
+    docker pull --platform "linux/$oci_arch" "$image" >/dev/null
+    id="$(docker create --platform "linux/$oci_arch" "$image")"
     docker export "$id" | tar -x --no-same-owner -C "$rootfs" 2>/dev/null
     docker rm "$id" >/dev/null
   fi
+  printf '%s\n' "$image linux/$oci_arch" > "$rootfs/.image-source"
 }
 
 # Run a command under the exported userland. x64 uses its ld.so directly (the
@@ -96,7 +120,7 @@ in_rootfs() {
     # `lib64/ld-linux-x86-64.so.2` is an absolute symlink, so use the real
     # ld-2.28.so file and point it at the exported libraries.
     local loader
-    loader="$(find "$rootfs/lib" -maxdepth 2 -type f -name 'ld-*.so' | head -1)"
+    loader="$(find "$rootfs/lib" -maxdepth 2 -type f -name 'ld-*.so' -print -quit)"
     [[ -n "$loader" ]] || die "no x64 loader in $rootfs"
     "$loader" --library-path "$rootfs/lib/x86_64-linux-gnu:$rootfs/usr/lib/x86_64-linux-gnu" "$@"
   fi
@@ -104,12 +128,13 @@ in_rootfs() {
 
 for arch in "${arches[@]}"; do
   case "$arch" in
-    x64|arm64) ;;
+    x64) oci_arch=amd64 ;;
+    arm64) oci_arch=arm64 ;;
     *) die "unknown architecture $arch; use x64 or arm64" ;;
   esac
 
   ensure_node "$arch"
-  ensure_rootfs "$arch"
+  ensure_rootfs "$arch" "$oci_arch"
   tree="$(node_tree "$arch")"
   rootfs="$CACHE/rootfs-$arch"
   suffix="$([[ "$arch" == arm64 ]] && echo linux-arm64-gnu || echo linux-x64-gnu)"

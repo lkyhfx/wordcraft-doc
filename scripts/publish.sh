@@ -104,7 +104,8 @@ for file in "${PLATFORMS[@]}"; do
 done
 "$ROOT/scripts/check-native-compatibility.sh" "$VERIFY_DIR"/*.node
 "$ROOT/scripts/test-package.sh"
-"$ROOT/scripts/test-glibc.sh"
+# Release tests require an immutable glibc-2.28 userland image digest.
+REQUIRE_PINNED_TEST_IMAGE=1 "$ROOT/scripts/test-glibc.sh"
 
 publish_one() {
   local file="$1"
