@@ -33,6 +33,12 @@ command -v cargo-about >/dev/null || {
 }
 
 LICENSE_REPORT="$ROOT/.tmp/wordcraft-doc-third-party-licenses.md"
+
+"$ROOT/scripts/check-versions.mjs"
+# Refuse to pack a binary that would not load on the advertised baseline, or
+# that picked up a dependency the target machine does not have.
+"$ROOT/scripts/check-native-compatibility.sh"
+
 mkdir -p "$(dirname "$LICENSE_REPORT")"
 (
   cd "$ROOT/native"
@@ -125,6 +131,41 @@ JS
 
 ( cd "$main" && npm pack --pack-destination "$DIST" >/dev/null )
 say "packed $SCOPE/$BASE"
+
+# The manifests inside the tarballs are what users install; check those, not
+# the source tree, before anyone can publish them.
+node - "$DIST" "$VERSION" <<'JS'
+const { execFileSync } = require('node:child_process');
+const { readdirSync } = require('node:fs');
+const { join } = require('node:path');
+const [dist, expected] = process.argv.slice(2);
+const files = readdirSync(dist).filter((file) => file.endsWith('.tgz'));
+if (files.length !== 3) {
+  console.error(`expected 3 tarballs in ${dist}, found ${files.length}`);
+  process.exit(1);
+}
+let main;
+for (const file of files) {
+  const pkg = JSON.parse(
+    execFileSync('tar', ['-xzOf', join(dist, file), 'package/package.json'], { encoding: 'utf8' }),
+  );
+  if (pkg.version !== expected) {
+    console.error(`${file}: expected version ${expected}, got ${pkg.version}`);
+    process.exit(1);
+  }
+  if (pkg.name === '@lkyhfx/wordcraft-doc') main = pkg;
+}
+for (const name of [
+  '@lkyhfx/wordcraft-doc-linux-x64-gnu',
+  '@lkyhfx/wordcraft-doc-linux-arm64-gnu',
+]) {
+  if (main?.optionalDependencies?.[name] !== expected) {
+    console.error(`main tarball optionalDependency ${name} is not ${expected}`);
+    process.exit(1);
+  }
+}
+console.log(`tarball manifests agree on ${expected}`);
+JS
 
 say "artifacts in $DIST"
 ls -1 "$DIST"/*.tgz

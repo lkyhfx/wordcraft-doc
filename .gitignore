@@ -2,6 +2,7 @@
 # space. None of this is part of the project.
 .dev/
 .tmp/
+.codegraph/
 
 # Build output
 native/target/

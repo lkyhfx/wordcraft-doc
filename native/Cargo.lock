@@ -1344,7 +1344,7 @@ dependencies = [
 
 [[package]]
 name = "wordcraft-doc-node"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "napi",
  "napi-build",

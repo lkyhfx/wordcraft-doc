@@ -225,10 +225,26 @@ binary); CJK fonts come from the system (see [Fonts](#fonts)).
 | Linux arm64 | `@lkyhfx/wordcraft-doc-linux-arm64-gnu` |
 | ABI | Node-API 9 |
 
-The binaries are linked against glibc 2.17 or newer. They do not load on musl
+The binaries are linked against glibc 2.28 or newer. They do not load on musl
 (Alpine) systems.
 
 ## Build from source
+
+Building needs Node.js 24 (for the NAPI CLI), Rust 1.95 or newer, and a pinned
+Zig toolchain. The linker is Zig through `cargo-zigbuild`; the host gcc and the
+host glibc are not used, so the produced binaries run on glibc 2.28 even when
+the build machine has a much newer libc.
+
+| Tool | Version | Install |
+|---|---|---|
+| Zig | 0.16.0 | [ziglang.org/download](https://ziglang.org/download/0.16.0/) |
+| cargo-zigbuild | 0.24.1 | `cargo install cargo-zigbuild --version 0.24.1 --locked` |
+| Rust | >= 1.95 | `rustup toolchain install stable` |
+| NAPI CLI | 3.10.9 | `npm install` in this repository |
+
+Put the `zig` executable on `PATH`, or at `.dev/zig/zig`; put
+`cargo-zigbuild` on `PATH`, or at `.dev/tools/bin/cargo-zigbuild`. The build
+script verifies both versions and the installed Rust targets before compiling.
 
 The upstream reader and writers are a git submodule:
 
@@ -239,16 +255,23 @@ cd wordcraft-doc
 npm install                        # dev tooling (napi CLI)
 ./scripts/build-native.sh --target all
 npm test
+./scripts/check-versions.mjs       # Cargo, npm and the generated loader agree
+./scripts/check-native-compatibility.sh
 cargo install cargo-about --locked # required to include third-party Rust license texts
-./scripts/package-native.sh
-./scripts/test-package.sh
+./scripts/package-native.sh        # checks compatibility, then packs
+./scripts/test-package.sh          # isolated install + all six APIs
+./scripts/test-glibc.sh            # actual load on glibc 2.28 (Docker + qemu)
 
 # Convert every test fixture into fixtures-docx/ and fixtures-pdf/ for inspection
 node scripts/convert-fixtures.ts
 ```
 
-The arm64 binary cannot be loaded natively on an x64 machine, but it can be
-exercised under qemu with an arm64 Node build:
+`./scripts/build-native.sh` builds the host target; `--target all` builds both
+Linux x64 and arm64. The arm64 build is a true cross-compile through Zig and
+needs no aarch64 GCC. `cargo-zigbuild` supplies `zig cc` to any C/C++ build
+script in the dependency tree, so no target sysroot is required either.
+
+The arm64 binary can also be exercised under qemu with an arm64 Node build:
 
 ```bash
 qemu-aarch64-static -L /path/to/arm64/rootfs \
@@ -260,6 +283,17 @@ qemu-aarch64-static -L /path/to/arm64/rootfs \
       console.log((await addon.convertDocToDocx(doc)).length, (await addon.convertDocToPdf(doc)).length);
     })();'
 ```
+
+`scripts/check-native-compatibility.sh` refuses an addon that is not ELF64 for
+the expected architecture, that needs a shared library other than glibc, that
+carries an RPATH/RUNPATH, that needs libstdc++, or that has any versioned
+`GLIBC_*` symbol above 2.28. It runs after every build and before packing.
+
+`scripts/test-glibc.sh` goes further: it exports a Debian 10 userland (glibc
+2.28) from Docker, runs the official Node 24 binary for that architecture
+against it, loads the addon and converts a document. arm64 runs under
+`qemu-aarch64-static`. Docker is needed only for this compatibility test, never
+for building.
 
 See [UPSTREAM.md](UPSTREAM.md) for the pinned upstream version and the sync
 procedure.

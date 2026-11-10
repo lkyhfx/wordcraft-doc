@@ -19,6 +19,8 @@ DIST="$ROOT/npm-dist"
 VERSION="$(node -p "require('$ROOT/npm/package.json').version")"
 export npm_config_cache="${npm_config_cache:-$ROOT/.dev/npm-cache}"
 
+"$ROOT/scripts/check-versions.mjs"
+
 say()  { printf '\033[1m%s\033[0m\n' "$*"; }
 die()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 

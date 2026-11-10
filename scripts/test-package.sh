@@ -16,10 +16,50 @@ say()  { printf '\033[1m%s\033[0m\n' "$*"; }
 fail() { printf '\033[31mFAILED:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [[ -d "$DIST" ]] || fail "no $DIST; run scripts/package-native.sh first"
+"$ROOT/scripts/check-versions.mjs" || fail "the source manifests disagree on the version"
+
 shopt -s nullglob
 tarballs=("$DIST"/*.tgz)
 shopt -u nullglob
 [[ ${#tarballs[@]} -ge 3 ]] || fail "expected at least 3 tarballs in $DIST, found ${#tarballs[@]}"
+
+# Check the manifests inside the tarballs too: a stale or hand-edited package
+# would otherwise only fail once a consumer installs it.
+node - "$DIST" "$VERSION" <<'JS'
+const { execFileSync } = require('node:child_process');
+const { readdirSync } = require('node:fs');
+const { join } = require('node:path');
+const [dist, expected] = process.argv.slice(2);
+const files = readdirSync(dist).filter((file) => file.endsWith('.tgz'));
+let main;
+let count = 0;
+for (const file of files) {
+  const pkg = JSON.parse(
+    execFileSync('tar', ['-xzOf', join(dist, file), 'package/package.json'], { encoding: 'utf8' }),
+  );
+  if (!pkg.name?.startsWith('@lkyhfx/wordcraft-doc')) continue;
+  count += 1;
+  if (pkg.version !== expected) {
+    console.error(`${file}: expected version ${expected}, got ${pkg.version}`);
+    process.exit(1);
+  }
+  if (pkg.name === '@lkyhfx/wordcraft-doc') main = pkg;
+}
+if (count !== 3 || !main) {
+  console.error(`expected 3 wordcraft-doc tarballs, found ${count}`);
+  process.exit(1);
+}
+for (const name of [
+  '@lkyhfx/wordcraft-doc-linux-x64-gnu',
+  '@lkyhfx/wordcraft-doc-linux-arm64-gnu',
+]) {
+  if (main.optionalDependencies?.[name] !== expected) {
+    console.error(`main tarball optionalDependency ${name} is not ${expected}`);
+    process.exit(1);
+  }
+}
+console.log(`tarball manifests agree on ${expected}`);
+JS
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -133,16 +173,32 @@ if (!pkg.optionalDependencies?.[`@lkyhfx/wordcraft-doc-${suffix}`]) {
 process.exit(bad);
 JS
 
-say "==> converting a document from the installed package"
-node - "$WORK" "$ROOT/tests/fixtures/test.doc" <<'JS'
+say "==> loading and converting with the version check enforced"
+NAPI_RS_ENFORCE_VERSION_CHECK=1 node - "$WORK" "$ROOT/tests/fixtures/test.doc" <<'JS'
 const { readFileSync } = require('node:fs');
 const [work, fixture] = process.argv.slice(2);
 
+// The generated loader keeps the underlying load failures in `cause`; print
+// the whole chain so MODULE_NOT_FOUND, ERR_DLOPEN_FAILED and version mismatches
+// do not collapse into "Cannot find native binding".
+function printError(error) {
+  let depth = 0;
+  for (let current = error; current && depth < 10; current = current.cause, depth += 1) {
+    const detail = [current.code, current.errno, current.syscall, current.path]
+      .filter((value) => value !== undefined)
+      .join(' ');
+    console.error('   ', '  '.repeat(depth), detail, current.message);
+  }
+}
+
 (async () => {
   const addon = require(`${work}/node_modules/@lkyhfx/wordcraft-doc`);
-  const { convertDocToDocx, convertDocFileToDocx, convertDocToPdf, convertDocFileToPdf, convertDocxToPdf } = addon;
-  const parsed = addon.__napiBindingTarget;
-  const target = parsed === 'native' ? 'native addon' : parsed;
+  const target = addon.__napiBindingTarget;
+  if (target !== 'native') {
+    throw new Error(`loaded a ${target} binding, not the native addon`);
+  }
+  console.log('    NAPI_RS_ENFORCE_VERSION_CHECK=1: native addon loaded');
+  const { convertDocToDocx, convertDocFileToDocx, convertDocToPdf, convertDocFileToPdf, convertDocxToPdf, convertDocxFileToPdf } = addon;
 
   const input = readFileSync(fixture);
   const docx = await convertDocToDocx(input);
@@ -185,8 +241,16 @@ const [work, fixture] = process.argv.slice(2);
   const writtenPdf = readFileSync(target3);
   if (!normalize(writtenPdf).equals(normalize(pdf))) throw new Error('the PDF file API and the Buffer API disagree');
   console.log('    PDF file API:', writtenPdf.length, 'bytes, same content as the Buffer API');
+
+  const target4 = `${work}/out-from-docx.pdf`;
+  await convertDocxFileToPdf(target2, target4);
+  const writtenFromDocx = readFileSync(target4);
+  if (!normalize(writtenFromDocx).equals(normalize(pdf2))) {
+    throw new Error('the DOCX file API and the DOCX Buffer API disagree');
+  }
+  console.log('    DOCX file API:', writtenFromDocx.length, 'bytes, same content as the Buffer API');
 })().catch((error) => {
-  console.error('   ', error.code ?? '', error.message);
+  printError(error);
   process.exit(1);
 });
 JS
