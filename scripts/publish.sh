@@ -93,6 +93,19 @@ for (const name of [
 }
 JS
 
+# A version-correct tarball is not enough: the binary inside it must still meet
+# the ABI promise and must load on glibc 2.28 for both architectures. Running
+# the same checks here makes the published artifact the one that was tested.
+say "==> verifying the packed binaries"
+VERIFY_DIR="$(mktemp -d)"
+trap 'rm -rf "$VERIFY_DIR"' EXIT
+for file in "${PLATFORMS[@]}"; do
+  tar -xzf "$DIST/$file" -C "$VERIFY_DIR" --strip-components=1 --wildcards 'package/*.node'
+done
+"$ROOT/scripts/check-native-compatibility.sh" "$VERIFY_DIR"/*.node
+"$ROOT/scripts/test-package.sh"
+"$ROOT/scripts/test-glibc.sh"
+
 publish_one() {
   local file="$1"
   local name version

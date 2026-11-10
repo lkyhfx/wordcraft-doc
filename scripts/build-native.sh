@@ -138,8 +138,9 @@ done
 say "zig $ZIG_ACTUAL, cargo-zigbuild $ZIGBUILD_ACTUAL, rustc $RUST_VERSION, glibc $GLIBC_BASELINE"
 
 # One place decides the published version: fail before a loader is generated
-# against a stale Cargo or npm version.
-"$ROOT/scripts/check-versions.mjs"
+# against a stale Cargo or npm version. The loader is checked again after the
+# build, because this run is what regenerates it.
+"$ROOT/scripts/check-versions.mjs" --source-only
 
 first=1
 for target in "${TARGETS[@]}"; do
@@ -173,6 +174,9 @@ for target in "${TARGETS[@]}"; do
 done
 
 rm -f "$NPM_DIR/discard.d.ts"
+
+# The loader is regenerated now; check what it says before anyone packs it.
+"$ROOT/scripts/check-versions.mjs"
 
 say "built artifacts"
 ls -1 "$NPM_DIR"/*.node

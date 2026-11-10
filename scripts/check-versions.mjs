@@ -10,6 +10,10 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFileSync(join(ROOT, file), 'utf8');
+// Before a build the loader is still the previous release's; only the source
+// manifests can be checked. After the build, and before packing or publishing,
+// the generated loader must match too.
+const sourceOnly = process.argv.includes('--source-only');
 
 function cargoPackageVersion(text, file) {
   let inPackage = false;
@@ -71,16 +75,21 @@ if (JSON.stringify(declared) !== JSON.stringify([...platformPackages].sort())) {
 }
 
 // The NAPI CLI writes the expected platform-package version into the loader it
-// generates, so a mismatch here means index.js came from an older build.
-const loader = read('npm/index.js');
-const loaderVersions = [...loader.matchAll(/expected ([0-9]+\.[0-9]+\.[0-9]+) but got/g)].map(
-  (match) => match[1],
-);
-if (loaderVersions.length === 0) {
-  fail('npm/index.js has no platform-package version check; regenerate it with scripts/build-native.sh');
-}
-for (const version of new Set(loaderVersions)) {
-  expect('npm/index.js platform-package version', version);
+// generates, so a mismatch here means index.js came from an older build. A
+// source-only check skips this: the build is about to regenerate the loader.
+if (!sourceOnly) {
+  const loader = read('npm/index.js');
+  const loaderVersions = [...loader.matchAll(/expected ([0-9]+\.[0-9]+\.[0-9]+) but got/g)].map(
+    (match) => match[1],
+  );
+  if (loaderVersions.length === 0) {
+    fail(
+      'npm/index.js has no platform-package version check; regenerate it with scripts/build-native.sh',
+    );
+  }
+  for (const version of new Set(loaderVersions)) {
+    expect('npm/index.js platform-package version', version);
+  }
 }
 
 if (problems.length > 0) {

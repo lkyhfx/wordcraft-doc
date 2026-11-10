@@ -12,7 +12,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GLIBC_BASELINE="${GLIBC_BASELINE:-2.28}"
+# The published ABI promise. Deliberately not overridable: a build may target a
+# newer glibc while experimenting, but such a binary must never pass this check.
+GLIBC_BASELINE="2.28"
 ALLOWED_NEEDED=(
   libc.so.6
   libm.so.6

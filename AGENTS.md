@@ -53,7 +53,7 @@ npm test                                 # conversion + PDF suites
 ./scripts/check-native-compatibility.sh  # ELF, glibc <= 2.28, NEEDED libs
 ./scripts/package-native.sh              # checks compatibility, three tarballs into npm-dist/
 ./scripts/test-package.sh                # install + convert + typecheck
-./scripts/test-glibc.sh                  # actual load on glibc 2.28 (Docker + qemu)
+./scripts/test-glibc.sh                  # install tarballs + load on glibc 2.28 (skopeo/docker + qemu)
 ./scripts/sync-upstream.sh <tag>         # move the submodule, verify, stage
 ```
 
@@ -67,4 +67,26 @@ Version 0.1.x has one source of truth: the root `package.json`.
 `scripts/check-versions.mjs` verifies `npm/package.json`, `native/Cargo.toml`,
 `native/Cargo.lock`, the optionalDependencies, and the version checks the NAPI
 CLI wrote into `npm/index.js`.
+
+`check:versions` accepts `--source-only` for the pre-build check: the loader is
+expected to be one release behind until the build regenerates it. Packing and
+publishing always run the full check.
+
+## Conventions
+
+- Errors reaching JavaScript carry a stable `code` (`ERR_WORDCRAFT_*`). Adding
+  an error kind means adding a code, a row in the README table, and a test.
+- A new `DocbinError`/`DocxError`/`PdfError` variant upstream will break the
+  exhaustive `match` in `native/src/lib.rs`. That is deliberate.
+- Tests assert on the produced file — DOCX package validity, text, structures;
+  PDF header, page objects, trailer, embedded fonts — never just that the
+  promise resolved. `tests/zip.ts` and `tests/pdf.ts` are dependency-free
+  readers for that purpose; `tests/docx.ts` builds DOCX inputs a fixture cannot.
+- PDF tests that depend on installed fonts must either use the bundled Latin
+  coverage or the uncovered `U+10FFFD` sentinel, so they pass with and without a
+  system CJK font. Never assert that CJK is *missing*.
+- `native/Cargo.toml` repeats upstream's `[patch.crates-io]` for `krilla`. Both
+  revs must match upstream's `Cargo.toml`; `sync-upstream.sh` re-pins the patch.
+- The environment variables `CARGO_HOME` and `npm_config_cache` may be pointed
+  inside `.dev/` when the usual homes are read-only.
 

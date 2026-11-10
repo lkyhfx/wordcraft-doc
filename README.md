@@ -290,10 +290,17 @@ carries an RPATH/RUNPATH, that needs libstdc++, or that has any versioned
 `GLIBC_*` symbol above 2.28. It runs after every build and before packing.
 
 `scripts/test-glibc.sh` goes further: it exports a Debian 10 userland (glibc
-2.28) from Docker, runs the official Node 24 binary for that architecture
-against it, loads the addon and converts a document. arm64 runs under
-`qemu-aarch64-static`. Docker is needed only for this compatibility test, never
-for building.
+2.28) from Docker or skopeo, runs the official Node 24 binary for that
+architecture against it, installs the packed main and platform tarballs with
+npm inside that userland, and converts a document through the installed package
+name. arm64 runs under `qemu-aarch64-static`. Docker/skopeo is needed only for
+this compatibility test, never for building. `scripts/publish.sh` runs this
+test, the isolated-install test and the ELF check against the tarball contents
+before any package reaches the registry.
+
+The glibc 2.28 ceiling is not configurable for a release: `GLIBC_BASELINE` can
+be changed while experimenting with a build, but the compatibility check always
+rejects a binary that needs a newer symbol.
 
 See [UPSTREAM.md](UPSTREAM.md) for the pinned upstream version and the sync
 procedure.
